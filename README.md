@@ -2,7 +2,7 @@
 
 一个用于研究「基准 ETF ↔ 杠杆 ETF 轮动」策略的回测工具，提供 **桌面 GUI**（Python + tkinter）和 **浏览器版**（纯静态页面，可在线打开）两种形态。
 
-> **在线体验**：开启 GitHub Pages 后访问 `https://<你的用户名>.github.io/<仓库名>/`
+> **在线体验**：https://fanruihwaiting8.github.io/SMHDataAnalysis/
 
 ## 策略模型
 
