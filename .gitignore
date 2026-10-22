@@ -1,0 +1,28 @@
+# ===== Python =====
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# ===== 运行时产生的本地状态 =====
+last_input.json
+smh_app.log
+*.log
+
+# ===== 打包产物（体积大且可由脚本重新生成）=====
+dist/
+build/
+*.app/
+*.zip
+
+# ===== 本地生成的图片 / 备份 =====
+result/
+*.png
+*.bak
+*.unusable
+
+# ===== 编辑器 / 系统 =====
+.DS_Store
+.idea/
+.vscode/

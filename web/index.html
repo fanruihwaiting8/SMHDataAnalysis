@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SMH 回撤补仓策略回测</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117; --card: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --primary: #1f6feb;
+    --up: #f85149; --down: #3fb950; --accent: #d29922;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 18px 80px; }
+  h1 { font-size: 24px; margin: 8px 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px; margin-bottom: 18px;
+  }
+  .card h2 { font-size: 16px; margin: 0 0 14px; }
+  .row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 12px; color: var(--muted); }
+  input, select {
+    background: #0d1117; border: 1px solid var(--border); color: var(--text);
+    border-radius: 7px; padding: 7px 9px; font-size: 14px; min-width: 70px;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--primary); }
+  .dsel { display: flex; gap: 6px; }
+  .dsel select { min-width: 0; padding: 7px 6px; }
+  .dsel .d-y { flex: 0 0 76px; }
+  .dsel .d-m, .dsel .d-d { flex: 0 0 58px; }
+  .grp { border-top: 1px dashed var(--border); margin-top: 14px; padding-top: 12px; }
+  .grp .lbl { font-size: 12px; color: var(--accent); margin-bottom: 8px; }
+  button {
+    background: var(--primary); color: #fff; border: none; border-radius: 8px;
+    padding: 9px 20px; font-size: 14px; cursor: pointer; font-weight: 600;
+  }
+  button:hover { background: #1a5fcc; }
+  button.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .metric {
+    background: #0d1117; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+  }
+  .metric .k { font-size: 12px; color: var(--muted); }
+  .metric .v { font-size: 22px; font-weight: 700; margin-top: 4px; }
+  .metric .v.pos { color: var(--down); } .metric .v.neg { color: var(--up); }
+  #chart { width: 100%; height: 440px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--card); }
+  td.buy { color: var(--up); } td.sell { color: var(--down); }
+  .tbl-wrap { max-height: 380px; overflow: auto; }
+  .toggle { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .toggle span {
+  font-size: 12px; padding: 4px 12px; border: 1px solid var(--border);
+    border-radius: 20px; cursor: pointer; color: var(--muted);
+  }
+  .toggle span.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .note { font-size: 12px; color: var(--muted); }
+  .cmp-tbl td.pos { color: var(--down); } .cmp-tbl td.neg { color: var(--up); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>半导体 ETF · 回撤补仓策略回测</h1>
+  <div class="sub">纯浏览器运行，调参后实时重算。SMH=1x 基准端，SMH3/TQQQ/USD=杠杆端。</div>
+  <div style="margin: 0 0 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+    <button class="ghost" id="updateData">🔄 更新最新数据</button>
+    <span class="note" id="updateStatus"></span>
+  </div>
+
+  <!-- 参数区 -->
+  <div class="card">
+    <h2>策略参数</h2>
+    <div class="row">
+      <div class="field">
+        <label>数据源</label>
+        <select id="source">
+          <option value="SMH">SMH / SMH3（半导体·3x）</option>
+          <option value="QQQ">QQQ / TQQQ（纳指100·3x）</option>
+          <option value="USD">SMH / USD（半导体·2x）</option>
+        </select>
+      </div>
+      <div class="field"><label>基准端投入 ($)</label><input id="capA" type="number" value="50000" /></div>
+      <div class="field"><label>杠杆端投入 ($)</label><input id="capB" type="number" value="50000" /></div>
+      <div class="field">
+        <label>起始日期</label>
+        <div class="dsel" id="startSel">
+          <select class="d-y" aria-label="起始年"></select>
+          <select class="d-m" aria-label="起始月"></select>
+          <select class="d-d" aria-label="起始日"></select>
+        </div>
+        <input id="startDate" type="hidden" />
+      </div>
+      <div class="field">
+        <label>截止日期</label>
+        <div class="dsel" id="endSel">
+          <select class="d-y" aria-label="截止年"></select>
+          <select class="d-m" aria-label="截止月"></select>
+          <select class="d-d" aria-label="截止日"></select>
+        </div>
+        <input id="endDate" type="hidden" />
+      </div>
+    </div>
+
+  <div class="grp">
+      <div class="lbl">▼ 回撤补仓：基准端相对峰值回撤达标时，卖出基准端市值的百分比转买杠杆端</div>
+      <div class="row" id="ddRow"></div>
+    </div>
+    <div class="grp">
+      <div class="lbl">▲ 反弹减仓：基准端相对有效底部反弹达标时，卖出杠杆端市值的百分比转买基准端</div>
+      <div class="row" id="rbRow"></div>
+    </div>
+    <div class="grp row">
+      <button id="run">运行回测</button>
+      <button class="ghost" id="recommend">填入推荐参数</button>
+      <span class="note" id="rangeNote"></span>
+    </div>
+  </div>
+
+  <!-- 指标卡 -->
+  <div class="card">
+    <h2>关键指标（动态策略）</h2>
+    <div class="cards" id="metrics"></div>
+  </div>
+
+  <!-- 净值曲线 -->
+  <div class="card">
+    <h2>净值曲线</h2>
+    <div class="toggle" id="curveToggle">
+      <span data-k="strategy" class="on">动态策略</span>
+      <span data-k="hold5050" class="on">50-50 不动</span>
+      <span data-k="holdA" class="on">纯持基准</span>
+      <span data-k="holdB" class="on">纯持杠杆</span>
+      <span data-k="log" class="on">对数坐标</span>
+    </div>
+    <div id="chart"></div>
+  </div>
+
+  <!-- 组合横向对比 -->
+  <div class="card">
+    <h2>组合横向对比（跟随上方设定的日期区间）</h2>
+    <div class="toggle" id="cmpToggle">
+      <span data-k="SMH" class="on">SMH / SMH3</span>
+      <span data-k="QQQ">QQQ / TQQQ</span>
+      <span data-k="USD" class="on">SMH / USD</span>
+    </div>
+    <div class="note" style="margin-bottom:10px">
+      勾选想对比的组合。对比区间跟随上方「起始/截止日期」的设定：各组均在你设定的范围内计算，便于同期对比。若某组的标的上市晚于你设定的起点（如 SMH3），则该组从其上市日起算。未设起点时，才会兜底为勾选组合涉及标的中最晚的上市日。
+    </div>
+    <div class="note" style="margin-bottom:10px" id="cmpNote"></div>
+    <div class="tbl-wrap">
+      <table class="cmp-tbl">
+        <thead><tr>
+          <th>组合</th><th>区间</th><th>最终资金</th><th>CAGR</th><th>最大回撤</th>
+          <th>夏普</th><th>纯持基准</th><th>纯持杠杆</th><th>交易数</th>
+        </tr></thead>
+        <tbody id="cmpBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 逐笔交易 -->
+  <div class="card">
+    <h2>逐笔交易明细 <span class="note" id="tradeCount"></span></h2>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>成交日</th><th>类型</th><th>说明</th><th>成交后总资金</th></tr></thead>
+        <tbody id="tradeBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="note">
+    ⚠ 本策略放大下跌、不保护下跌：越跌越加杠杆，意味着可能在最低点满仓杠杆。
+    夏普未扣无风险利率，仅供本工具内部横向比较。SMH3 为伦敦上市 ETP，
+    相对「3x SMH」有显著跟踪偏离，调参优先参考口径更干净的 QQQ/TQQQ。
+  </div>
+</div>
+
+<script src="data.js?v=3"></script>
+<script src="backtest.js?v=3"></script>
+<script src="app.js?v=4"></script>
+<script>
+// 点击「更新最新数据」：请求本地服务联网抓取五标的行情并重建 data.js，完成后刷新页面。
+(function () {
+  var btn = document.getElementById('updateData');
+  var status = document.getElementById('updateStatus');
+  if (!btn) return;
+
+  // 静态托管（如 GitHub Pages）没有 serve.py 后端，/api/update 不可用。
+  // 此时隐藏「更新最新数据」按钮并说明数据为构建时快照，避免用户点了必然报错。
+  var h = location.hostname;
+  var isLocalBackend = (location.protocol === 'http:' || location.protocol === 'https:')
+    && (h === 'localhost' || h === '127.0.0.1' || h === '[::1]');
+  if (!isLocalBackend) {
+    btn.style.display = 'none';
+    if (status) {
+      status.textContent = '在线版行情数据为发布时快照；如需抓取最新数据，'
+        + '请克隆仓库后用 python web/serve.py 本地运行。';
+    }
+    return;
+  }
+
+  btn.addEventListener('click', function () {
+    if (!confirm('将联网抓取 SMH/SMH3/QQQ/TQQQ/USD 的最新行情并重建数据，约需 1 分钟，期间请勿关闭页面。是否继续？')) return;
+    btn.disabled = true;
+    var t0 = Date.now();
+    status.textContent = '⏳ 更新中，请稍候（约 1 分钟）…';
+    var timer = setInterval(function () {
+      status.textContent = '⏳ 更新中，请稍候…已用时 ' + Math.round((Date.now() - t0) / 1000) + ' 秒';
+    }, 1000);
+    fetch('/api/update', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        clearInterval(timer);
+        if (res.ok) {
+          var parts = Object.keys(res.summary).map(function (k) {
+            var s = res.summary[k];
+            return k + '：' + s.state + '（至 ' + (s.last || '-') + '）';
+          });
+          status.textContent = '✅ 更新完成 —— ' + parts.join('；') + '。正在刷新页面…';
+          setTimeout(function () { location.reload(); }, 1500);
+        } else {
+          status.textContent = '❌ 更新失败：' + (res.error || '未知错误');
+          btn.disabled = false;
+        }
+      })
+      .catch(function (e) {
+        clearInterval(timer);
+        status.textContent = '❌ 请求失败：' + e + '（请通过“本地预览(serve.py)”启动，勿直接双击 index.html）';
+        btn.disabled = false;
+      });
+  });
+})();
+</script>
+</body>
+</html>

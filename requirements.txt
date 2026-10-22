@@ -1,0 +1,8 @@
+# SMH 数据分析助手依赖
+# GUI 使用 Python 标准库 tkinter，日期选择用 ttk.Combobox（年/月/日）。
+# 净值曲线对比图使用 matplotlib（TkAgg 后端嵌入 tkinter），需安装：
+matplotlib>=3.5
+# 后续如需更多数据处理能力，可按需启用以下依赖：
+# pandas
+# numpy
+# openpyxl
