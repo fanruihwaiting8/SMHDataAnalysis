@@ -76,6 +76,10 @@
   /* 档位输入框下方的触发价小字 */
   .trig { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
   .trig.hit { color: var(--accent); font-weight: 600; }
+  /* 本轮已触发（用掉）的档位：橙色提示，须等基准重置 */
+  .trig.fired { color: #f0883e; font-weight: 600; }
+  /* 当前阶段下不适用的档位（有效底部属上一轮下跌）：整体压暗 */
+  .trig.stale { color: #6e7681; font-style: italic; }
   .field { min-width: 118px; }
   .cmp-tbl td.pos { color: var(--down); } .cmp-tbl td.neg { color: var(--up); }
   /* 新手使用指引（可折叠） */
@@ -264,8 +268,8 @@
 </div>
 
 <script src="data.js?v=4"></script>
-<script src="backtest.js?v=6"></script>
-<script src="app.js?v=6"></script>
+<script src="backtest.js?v=7"></script>
+<script src="app.js?v=7"></script>
 <script>
 // 使用指引的展开/折叠状态记忆：首次访问默认展开，用户折叠后下次保持折叠。
 (function () {

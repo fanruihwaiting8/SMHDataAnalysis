@@ -40,6 +40,11 @@ REBOUND_LEVELS = [50, 100, 200]
 # 本段（两相邻新高之间）的区间最低点即被认定为反弹减仓基准 active_trough
 TROUGH_TRIGGER_PCT = 25.0
 
+# 阶段判定用：在「有效底部已成立」的那一轮里，现价自底部反弹超过该幅度(%)
+# 才认为进入「底部反弹」阶段，否则仍算「深度回撤探底」。
+# 仅用于界面文案提示，不参与任何回测计算。
+PHASE_REBOUND_PCT = 10.0
+
 
 def _load_close_series(csv_path: str) -> dict:
     """读取 CSV，返回 {date_str: close_price} 字典。"""
@@ -340,6 +345,14 @@ def compute_live_state(smh_csv, smh3_csv):
         "latest_date": str,                 # 最新交易日
         "dd_trigger_prices": {lv: price},   # 各回撤档触发价 = peak*(1-lv/100)
         "rb_trigger_prices": {lv: price},   # 各反弹档触发价 = active_trough*(1+lv/100)
+        "dd_pct": float,                    # 现价较 peak 的跌幅（负值夹到 0）
+        "rb_pct": float,                    # 现价较 active_trough 的涨幅（夹到 0）
+        "seg_active": bool,                 # 本轮是否已回撤≥25%（有效底部成立）
+        "trough_stale": bool,               # 有效底部是否属于上一轮下跌
+        "dd_fired": [lv],                   # 本轮已触发（已用掉）的回撤档
+        "rb_fired": [lv],                   # 当前底部已触发（已用掉）的反弹档
+        "phase": str,                       # peak/pullback/bottoming/rebound
+        "phase_label": str,                 # 阶段中文名
       }
     """
     smh_series = _load_close_series(smh_csv)
@@ -418,6 +431,34 @@ def compute_live_state(smh_csv, smh3_csv):
         lv: round(active_trough * (1 + lv / 100.0), 2)
         for lv in REBOUND_LEVELS}
 
+    # 当前相对两个基准的幅度（负值夹到 0）
+    dd_pct = max(0.0, (peak - latest_price) / peak * 100.0) if peak > 0 else 0.0
+    if active_trough and active_trough > 0:
+        rb_pct = max(0.0,
+                     (latest_price - active_trough) / active_trough * 100.0)
+    else:
+        rb_pct = 0.0
+
+    # ===== 阶段判定 =====
+    # seg_active=True 表示「自最近一次历史新高以来已回撤超过 TROUGH_TRIGGER_PCT」，
+    # 此时 active_trough 属于当前这一轮下跌，反弹减仓参考才有效；
+    # seg_active=False 表示本轮回撤还不够深（或刚创新高），有效底部是上一轮的，
+    # 此时反弹减仓触发价没有实际参考意义。
+    # 反过来，在 seg_active=True 的这一轮里，dd_fired 中的档位已经用掉，
+    # 必须等创新高后才会重置，这些档的「跌到多少补仓」也不该照旧展示。
+    if latest_price >= peak:
+        phase = "peak"
+        phase_label = "创新高"
+    elif not seg_active:
+        phase = "pullback"
+        phase_label = "高位回调"
+    elif rb_pct < PHASE_REBOUND_PCT:
+        phase = "bottoming"
+        phase_label = "深度回撤探底"
+    else:
+        phase = "rebound"
+        phase_label = "底部反弹"
+
     return {
         "peak": peak,
         "peak_date": peak_date,
@@ -427,4 +468,13 @@ def compute_live_state(smh_csv, smh3_csv):
         "latest_date": latest_date,
         "dd_trigger_prices": dd_trigger_prices,
         "rb_trigger_prices": rb_trigger_prices,
+        "dd_pct": dd_pct,
+        "rb_pct": rb_pct,
+        "seg_active": seg_active,
+        # 有效底部是否属于上一轮下跌（True 时反弹减仓参考无实际意义）
+        "trough_stale": not seg_active,
+        "dd_fired": sorted(dd_fired),
+        "rb_fired": sorted(rb_fired),
+        "phase": phase,
+        "phase_label": phase_label,
     }

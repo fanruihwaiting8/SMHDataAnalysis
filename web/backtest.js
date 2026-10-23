@@ -4,6 +4,9 @@
 const DRAWDOWN_LEVELS = [15, 25, 35, 45, 50];
 const REBOUND_LEVELS = [50, 100, 200];
 const TROUGH_TRIGGER_PCT = 25.0;
+// 仅用于「当前处于哪个阶段」的文案判定：自有效底部回升超过该幅度视为"底部反弹"，
+// 否则视为仍在"探底"。不参与任何交易判定，与 backtest.py 的同名常量一致。
+const PHASE_REBOUND_PCT = 10.0;
 
 // 把 window.PRICE_DATA[key] 的 {dates,closes} 转成 {date: close} 映射
 function seriesMap(key) {
@@ -266,18 +269,36 @@ function computeLiveState(keyA, keyB) {
   for (const lv of DRAWDOWN_LEVELS) ddTriggerPrices[lv] = peak * (1 - lv / 100.0);
   for (const lv of REBOUND_LEVELS) rbTriggerPrices[lv] = activeTrough * (1 + lv / 100.0);
 
+  // 当前价相对峰值的跌幅 / 相对有效底部的涨幅（负值夹到 0，与桌面 GUI 一致）
+  const ddPct = peak > 0
+    ? Math.max(0, ((peak - latestPrice) / peak) * 100.0) : 0;
+  const rbPct = activeTrough > 0
+    ? Math.max(0, ((latestPrice - activeTrough) / activeTrough) * 100.0) : 0;
+
+  // ===== 阶段判定（与 backtest.py 同一套规则）=====
+  // segActive=true 表示「自最近一次新高以来已回撤超过 TROUGH_TRIGGER_PCT」，
+  // 此时 activeTrough 属于当前这一轮下跌，反弹减仓参考才有效；
+  // segActive=false 则有效底部来自上一轮，减仓触发价没有实际参考意义。
+  // 而在 segActive=true 的这一轮里，ddFired 的档位已经用掉，须创新高才重置。
+  let phase, phaseLabel;
+  if (latestPrice >= peak) { phase = "peak"; phaseLabel = "创新高"; }
+  else if (!segActive) { phase = "pullback"; phaseLabel = "高位回调"; }
+  else if (rbPct < PHASE_REBOUND_PCT) { phase = "bottoming"; phaseLabel = "深度回撤探底"; }
+  else { phase = "rebound"; phaseLabel = "底部反弹"; }
+
   return {
     peak, peakDate, activeTrough, troughDate, latestPrice, latestDate,
     ddTriggerPrices, rbTriggerPrices,
-    ddFired: Array.from(ddFired), rbFired: Array.from(rbFired),
-    // 当前价相对峰值的跌幅 / 相对有效底部的涨幅（负值夹到 0，与桌面 GUI 一致）
-    ddPct: peak > 0 ? Math.max(0, ((peak - latestPrice) / peak) * 100.0) : 0,
-    rbPct: activeTrough > 0
-      ? Math.max(0, ((latestPrice - activeTrough) / activeTrough) * 100.0) : 0,
+    ddFired: Array.from(ddFired).sort((x, y) => x - y),
+    rbFired: Array.from(rbFired).sort((x, y) => x - y),
+    ddPct, rbPct, segActive,
+    // 有效底部是否属于上一轮下跌（true 时反弹减仓参考无实际意义）
+    troughStale: !segActive,
+    phase, phaseLabel,
   };
 }
 
 window.SMH_BT = {
   runBacktest, calcMetrics, commonDates, computeLiveState,
-  DRAWDOWN_LEVELS, REBOUND_LEVELS, TROUGH_TRIGGER_PCT,
+  DRAWDOWN_LEVELS, REBOUND_LEVELS, TROUGH_TRIGGER_PCT, PHASE_REBOUND_PCT,
 };

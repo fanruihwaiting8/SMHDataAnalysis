@@ -24,7 +24,8 @@ from tkinter import ttk, messagebox, scrolledtext
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from backtest import (
-    run_backtest, get_default_start_date, get_common_dates, compute_live_state)
+    run_backtest, get_default_start_date, get_common_dates, compute_live_state,
+    TROUGH_TRIGGER_PCT)
 
 # matplotlib 用于在 GUI 中嵌入净值曲线对比图。必须在导入后端前指定 TkAgg。
 # 注意：这里只用面向对象接口（Figure + FigureCanvasTkAgg），不导入 pyplot，
@@ -322,6 +323,12 @@ class SMHApp:
         # 虚化推荐提示：浅灰斜体，弱化视觉存在感
         style.configure("Hint.TLabel", font=("Helvetica", 10, "italic"),
                         foreground="#777777")
+        # 档位已在本轮用掉（需等基准重置）：橙色，提醒该触发价暂不会再生效
+        style.configure("HintFired.TLabel", font=("Helvetica", 10, "italic"),
+                        foreground="#B26A00")
+        # 档位当前不适用（参考基准属于上一轮）：更淡的灰，表示无参考意义
+        style.configure("HintStale.TLabel", font=("Helvetica", 10, "italic"),
+                        foreground="#9E9E9E")
         # 顶部状态标签：跌幅用深红、涨幅用深绿，醒目易读
         style.configure("StatusDd.TLabel", font=("Helvetica", 11),
                         foreground="#C62828")
@@ -488,7 +495,8 @@ class SMHApp:
         row += 1
 
         # 补仓模块顶部：当前价较历史最高点的跌幅（上涨空间则 0%）
-        self.lbl_dd_status = ttk.Label(grid, text="", style="StatusDd.TLabel")
+        self.lbl_dd_status = ttk.Label(grid, text="", style="StatusDd.TLabel",
+                                       justify="left")
         self.lbl_dd_status.grid(
             row=row, column=0, columnspan=3, sticky="w", pady=(0, 4))
         row += 1
@@ -526,7 +534,8 @@ class SMHApp:
         row += 1
 
         # 减仓模块顶部：当前价较历史底部（有效底部）的涨幅（下跌空间则 0%）
-        self.lbl_rb_status = ttk.Label(grid, text="", style="StatusRb.TLabel")
+        self.lbl_rb_status = ttk.Label(grid, text="", style="StatusRb.TLabel",
+                                       justify="left")
         self.lbl_rb_status.grid(
             row=row, column=0, columnspan=3, sticky="w", pady=(0, 4))
         row += 1
@@ -689,11 +698,15 @@ class SMHApp:
             self.var_rebounds[lv].set(str(ds["recommend_rb"][lv]))
 
     def _refresh_status_labels(self):
-        """刷新补仓/减仓模块顶部的跌幅/涨幅状态标签（自动）。
+        """刷新补仓/减仓模块顶部的状态标签（自动）。
 
-        补仓顶部：当前价较历史最高点(peak)的跌幅，创新高则 0%；
-        减仓顶部：当前价较有效底部(active_trough)的涨幅，处于底部则 0%。
-        数据不可用时清空标签。
+        除了跌幅/涨幅，还要说明「当前处于哪个阶段」，并明确指出哪一侧的参考
+        基准属于上一轮周期、因而没有实际参考意义：
+
+        · 现价距峰值回撤未达 25%（创新高 / 高位回调）→ 有效底部仍是上一轮下跌
+          留下的，反弹减仓触发价不适用，必须先跌出新底部；
+        · 现价已自峰值回撤超过 25%（探底 / 底部反弹）→ 有效底部有效，但本轮
+          已触发过的回撤档不会再次触发，必须等创新高后才重置。
         """
         try:
             state = compute_live_state(self._csv_a(), self._csv_b())
@@ -705,74 +718,115 @@ class SMHApp:
         peak = state["peak"]
         trough = state["active_trough"]
         date = state["latest_date"]
+        name_a = self._name_a()
+        phase = state["phase"]
+        phase_label = state["phase_label"]
+        dd_fired = state["dd_fired"]
+        rb_fired = state["rb_fired"]
+        stale = state["trough_stale"]
 
-        # 补仓：较最高点跌幅（上涨空间/创新高 → 0%）
+        head = f"截至 {date}｜当前阶段：{phase_label}"
+
+        # ===== 回撤补仓侧 =====
         if latest >= peak:
-            dd_text = (f"截至 {date}：当前 ${latest:.2f} 创新高"
-                       f"（{state['peak_date']}），跌幅 0%")
+            dd_line = (f"{head}\n{name_a} 现价 ${latest:.2f} 正是历史最高"
+                       f"（{state['peak_date']}），跌幅 0.00%")
         else:
-            dd_pct = (peak - latest) / peak * 100.0
-            dd_text = (f"截至 {date}：当前 ${latest:.2f}，"
-                       f"较最高点 ${peak:.2f}（{state['peak_date']}）"
-                       f"跌幅 {dd_pct:.2f}%")
-        self.lbl_dd_status.config(text=dd_text)
+            dd_line = (f"{head}\n{name_a} 现价 ${latest:.2f}，较历史最高 "
+                       f"${peak:.2f}（{state['peak_date']}）"
+                       f"跌幅 {state['dd_pct']:.2f}%")
+        if dd_fired:
+            fired_txt = "/".join(f"-{lv}%" for lv in dd_fired)
+            dd_line += (f"\n└ {fired_txt} 档自上次创新高以来已触发过，"
+                        f"本轮不会再次补仓；其余档位的触发价仍然有效")
+        else:
+            dd_line += "\n└ 五档均未触发，下方触发价全部有效"
+        self.lbl_dd_status.config(text=dd_line)
 
-        # 减仓：较有效底部涨幅（下跌空间/处于底部 → 0%）
-        if trough is None or latest <= trough:
-            rb_text = (f"截至 {date}：当前 ${latest:.2f} 处于底部"
-                       f"（{state['trough_date']}），涨幅 0%")
+        # ===== 反弹减仓侧 =====
+        if trough is None or trough <= 0:
+            self.lbl_rb_status.config(text=f"{head}\n暂无有效底部数据")
+            return
+        if stale:
+            # 关键：本轮回撤还不到 25%，有效底部来自上一轮下跌，减仓参考失真
+            rb_line = (
+                f"{head}\n有效底部 ${trough:.2f}（{state['trough_date']}）"
+                f"来自上一轮下跌，现价已高出 {state['rb_pct']:.2f}%——"
+                f"下方减仓触发价当前不适用"
+                f"\n└ 需先自峰值回撤超过 {TROUGH_TRIGGER_PCT:.0f}% 跌出新底部"
+                f"（即跌破 ${peak * (1 - TROUGH_TRIGGER_PCT / 100.0):.2f}）"
+                f"，减仓档位才会重新计时")
         else:
-            rb_pct = (latest - trough) / trough * 100.0
-            rb_text = (f"截至 {date}：当前 ${latest:.2f}，"
-                       f"较底部 ${trough:.2f}（{state['trough_date']}）"
-                       f"涨幅 {rb_pct:.2f}%")
-        self.lbl_rb_status.config(text=rb_text)
+            rb_line = (f"{head}\n{name_a} 现价 ${latest:.2f}，较本轮有效底部 "
+                       f"${trough:.2f}（{state['trough_date']}）"
+                       f"涨幅 {state['rb_pct']:.2f}%")
+            if rb_fired:
+                fired_txt = "/".join(f"+{lv}%" for lv in rb_fired)
+                rb_line += (f"\n└ {fired_txt} 档对该底部已触发过，"
+                            f"本轮不会再次减仓；其余档位的触发价仍然有效")
+            else:
+                rb_line += "\n└ 各档均未触发，下方触发价全部有效"
+        self.lbl_rb_status.config(text=rb_line)
 
     def _calc_dd_prices(self):
         """点击按钮：计算各回撤档位触发价，显示在输入框旁。
 
         触发价 = 当前 peak × (1 - 档位/100)，即"跌到多少元触发补仓"。
         输入框有值时显示用户输入的百分比，空值回退推荐值。
+        已在本轮触发过的档位（dd_fired）不会再次补仓，故不展示触发价，
+        改为提示「本轮已触发」，避免误以为跌到该价还会加杠杆。
         """
         try:
             state = compute_live_state(self._csv_a(), self._csv_b())
         except Exception:
             return
         dd_prices = state["dd_trigger_prices"]
+        dd_fired = set(state["dd_fired"])
         rec_dd = self._ds()["recommend_dd"]
         for lv, lbl in self.lbl_recommend_dd.items():
+            raw = self.var_drawdowns[lv].get().strip()
+            pct = f"{raw}%" if raw else f"推荐 {rec_dd[lv]}%"
             p = dd_prices.get(lv)
             if p is None:
-                lbl.config(text=f"推荐 {rec_dd[lv]}%")
-                continue
-            raw = self.var_drawdowns[lv].get().strip()
-            if raw:
-                lbl.config(text=f"{raw}%｜跌到 ${p:.2f} 补仓")
+                lbl.config(text=pct, style="Hint.TLabel")
+            elif lv in dd_fired:
+                lbl.config(text=f"{pct}｜本轮已触发，须创新高后才重置",
+                           style="HintFired.TLabel")
             else:
-                lbl.config(text=f"推荐 {rec_dd[lv]}%｜跌到 ${p:.2f} 补仓")
+                lbl.config(text=f"{pct}｜跌到 ${p:.2f} 补仓",
+                           style="Hint.TLabel")
 
     def _calc_rb_prices(self):
         """点击按钮：计算各反弹档位触发价，显示在输入框旁。
 
         触发价 = 当前有效底部 × (1 + 档位/100)，即"涨到多少元触发减仓"。
         输入框有值时显示用户输入的百分比，空值回退推荐值。
+        若有效底部属于上一轮下跌（trough_stale），这些价格早已被现价穿过，
+        没有参考意义，统一提示「暂不适用」；本轮已触发过的档位同理标注。
         """
         try:
             state = compute_live_state(self._csv_a(), self._csv_b())
         except Exception:
             return
         rb_prices = state["rb_trigger_prices"]
+        rb_fired = set(state["rb_fired"])
+        stale = state["trough_stale"]
         rec_rb = self._ds()["recommend_rb"]
         for lv, lbl in self.lbl_recommend_rb.items():
+            raw = self.var_rebounds[lv].get().strip()
+            pct = f"{raw}%" if raw else f"推荐 {rec_rb[lv]}%"
             p = rb_prices.get(lv)
             if p is None:
-                lbl.config(text=f"推荐 {rec_rb[lv]}%")
-                continue
-            raw = self.var_rebounds[lv].get().strip()
-            if raw:
-                lbl.config(text=f"{raw}%｜涨到 ${p:.2f} 减仓")
+                lbl.config(text=pct, style="Hint.TLabel")
+            elif stale:
+                lbl.config(text=f"{pct}｜暂不适用：底部属上一轮，待跌出新底部",
+                           style="HintStale.TLabel")
+            elif lv in rb_fired:
+                lbl.config(text=f"{pct}｜本轮已触发，须跌出新底部后才重置",
+                           style="HintFired.TLabel")
             else:
-                lbl.config(text=f"推荐 {rec_rb[lv]}%｜涨到 ${p:.2f} 减仓")
+                lbl.config(text=f"{pct}｜涨到 ${p:.2f} 减仓",
+                           style="Hint.TLabel")
 
     def on_source_change(self, label: str):
         """切换数据源：更新 key、重置日期/年份范围/推荐值/标的名标签。"""
@@ -804,11 +858,13 @@ class SMHApp:
         self.lbl_rb_title.config(
             text=f"反弹减仓（卖 {self._name_b()} 买 {self._name_a()}，填百分比）")
 
-        # 更新推荐值提示
+        # 更新推荐值提示（同时把上一数据源留下的「已触发/不适用」配色复位）
         for lv, lbl in self.lbl_recommend_dd.items():
-            lbl.config(text=f"推荐 {self._ds()['recommend_dd'][lv]}%")
+            lbl.config(text=f"推荐 {self._ds()['recommend_dd'][lv]}%",
+                       style="Hint.TLabel")
         for lv, lbl in self.lbl_recommend_rb.items():
-            lbl.config(text=f"推荐 {self._ds()['recommend_rb'][lv]}%")
+            lbl.config(text=f"推荐 {self._ds()['recommend_rb'][lv]}%",
+                       style="Hint.TLabel")
 
         # 切换数据源后，把该源的推荐档位自动填入补仓/减仓输入框
         self._fill_recommend_values()

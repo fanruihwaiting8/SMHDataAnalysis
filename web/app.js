@@ -175,6 +175,12 @@
   // 与桌面 GUI 的「计算触发价」按钮等价，但在网页上始终自动显示，无需点击。
   // 触发价只取决于价格基准（peak / 有效底部），与投入资金和换仓比例无关，
   // 因此切换数据源时才需要重算，改资金/比例不影响。
+  //
+  // 关键：展示前先分清「当前处于下跌还是上涨阶段」，否则会给出误导性价格——
+  // · 现价距峰值回撤未达 25%（创新高 / 高位回调）→ 有效底部还是上一轮下跌留下的，
+  //   减仓触发价早被现价穿过，必须标注「暂不适用」，等跌出新底部才重新计时；
+  // · 已进入深度回撤 / 底部反弹 → 本轮已触发过的回撤档不会再次补仓
+  //   （须创新高后才重置），也不能照旧展示「跌到 $X 补仓」。
   function fmtPrice(v) { return "$" + v.toFixed(2); }
 
   function renderLiveState() {
@@ -186,28 +192,57 @@
       $("rbStatus").textContent = "";
       return;
     }
+    const ddFired = new Set(st.ddFired);
+    const rbFired = new Set(st.rbFired);
+    const stale = st.troughStale;
+    const head = `截至 ${st.latestDate}｜当前阶段：<b>${st.phaseLabel}</b>`;
 
-    // 补仓模块顶部：现价较历史最高点的跌幅（创新高当日为 0%）
-    $("ddStatus").innerHTML = st.ddPct <= 0
-      ? `截至 ${st.latestDate}：${src.na} 现价 <b>${fmtPrice(st.latestPrice)}</b>`
+    // 补仓模块顶部：现价较历史最高点的跌幅（创新高当日为 0%）+ 本轮已用掉的档位
+    let ddTxt = st.ddPct <= 0
+      ? `${head}<br/>${src.na} 现价 <b>${fmtPrice(st.latestPrice)}</b>`
         + `，正处历史最高点（${st.peakDate}），较峰值跌幅 <b>0.00%</b>`
-      : `截至 ${st.latestDate}：${src.na} 现价 <b>${fmtPrice(st.latestPrice)}</b>`
+      : `${head}<br/>${src.na} 现价 <b>${fmtPrice(st.latestPrice)}</b>`
         + `，较历史最高 ${fmtPrice(st.peak)}（${st.peakDate}）跌幅 <b>${st.ddPct.toFixed(2)}%</b>`;
+    ddTxt += st.ddFired.length
+      ? `<br/>└ ${st.ddFired.map((lv) => `-${lv}%`).join("/")} 档自上次创新高以来`
+        + `已触发过，本轮不会再次补仓；其余档位触发价仍然有效`
+      : `<br/>└ 五档均未触发，下方触发价全部有效`;
+    $("ddStatus").innerHTML = ddTxt;
 
-    // 减仓模块顶部：现价较有效底部的涨幅（处于底部为 0%）
-    $("rbStatus").innerHTML = st.rbPct <= 0
-      ? `截至 ${st.latestDate}：${src.na} 现价 <b>${fmtPrice(st.latestPrice)}</b>`
-        + `，正处有效底部（${st.troughDate}），较底部涨幅 <b>0.00%</b>`
-      : `截至 ${st.latestDate}：${src.na} 现价 <b>${fmtPrice(st.latestPrice)}</b>`
-        + `，较有效底部 ${fmtPrice(st.activeTrough)}（${st.troughDate}）涨幅 <b>${st.rbPct.toFixed(2)}%</b>`;
+    // 减仓模块顶部：有效底部是否还属于本轮，决定触发价有没有参考价值
+    let rbTxt;
+    if (stale) {
+      const need = st.peak * (1 - BT.TROUGH_TRIGGER_PCT / 100.0);
+      rbTxt = `${head}<br/>有效底部 ${fmtPrice(st.activeTrough)}（${st.troughDate}）`
+        + `<b>来自上一轮下跌</b>，现价已高出 <b>${st.rbPct.toFixed(2)}%</b>`
+        + `——下方减仓触发价当前不适用`
+        + `<br/>└ 需先自峰值回撤超过 ${BT.TROUGH_TRIGGER_PCT.toFixed(0)}% 跌出新底部`
+        + `（即跌破 ${fmtPrice(need)}），减仓档位才会重新计时`;
+    } else {
+      rbTxt = st.rbPct <= 0
+        ? `${head}<br/>${src.na} 现价 <b>${fmtPrice(st.latestPrice)}</b>`
+          + `，正处本轮有效底部（${st.troughDate}），较底部涨幅 <b>0.00%</b>`
+        : `${head}<br/>${src.na} 现价 <b>${fmtPrice(st.latestPrice)}</b>`
+          + `，较本轮有效底部 ${fmtPrice(st.activeTrough)}（${st.troughDate}）`
+          + `涨幅 <b>${st.rbPct.toFixed(2)}%</b>`;
+      rbTxt += st.rbFired.length
+        ? `<br/>└ ${st.rbFired.map((lv) => `+${lv}%`).join("/")} 档对该底部已触发过，`
+          + `本轮不会再次减仓；其余档位触发价仍然有效`
+        : `<br/>└ 各档均未触发，下方触发价全部有效`;
+    }
+    $("rbStatus").innerHTML = rbTxt;
 
     // 各回撤档：跌到多少钱触发补仓 + 距触发还需跌多少
+    // 本轮已触发过的档位不再展示触发价，避免误以为跌到该价还会加杠杆。
     DD.forEach((lv) => {
       const el = $(`ddTrig-${lv}`);
       if (!el) return;
       const tp = st.ddTriggerPrices[lv];
       const gap = ((st.latestPrice - tp) / st.latestPrice) * 100.0;
-      if (gap <= 0) {
+      if (ddFired.has(lv)) {
+        el.className = "trig fired";
+        el.innerHTML = `本轮已触发（${fmtPrice(tp)}）<br/>须创新高后才重置`;
+      } else if (gap <= 0) {
         el.className = "trig hit";
         el.innerHTML = `跌到 ${fmtPrice(tp)} 补仓<br/>✓ 已达（现价已低于触发价）`;
       } else {
@@ -216,13 +251,19 @@
       }
     });
 
-    // 各反弹档：涨到多少钱触发减仓 + 距触发还需涨多少
+    // 各反弹档：底部失效时整体标灰，本轮已触发的档位单独标注
     RB.forEach((lv) => {
       const el = $(`rbTrig-${lv}`);
       if (!el) return;
       const tp = st.rbTriggerPrices[lv];
       const gap = ((tp - st.latestPrice) / st.latestPrice) * 100.0;
-      if (gap <= 0) {
+      if (stale) {
+        el.className = "trig stale";
+        el.innerHTML = `暂不适用（${fmtPrice(tp)}）<br/>底部属上一轮，待跌出新底部`;
+      } else if (rbFired.has(lv)) {
+        el.className = "trig fired";
+        el.innerHTML = `本轮已触发（${fmtPrice(tp)}）<br/>须跌出新底部后才重置`;
+      } else if (gap <= 0) {
         el.className = "trig hit";
         el.innerHTML = `涨到 ${fmtPrice(tp)} 减仓<br/>✓ 已达（现价已高于触发价）`;
       } else {
