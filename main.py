@@ -56,6 +56,55 @@ DRAWDOWN_LEVELS = [15, 25, 35, 45, 50]
 # 从底部反弹（上涨）档位（用于动态生成 卖出杠杆端减仓百分比输入框）
 REBOUND_LEVELS = [50, 100, 200]
 
+# 新手使用指引（点击底部「❓ 使用说明」弹窗展示，内容与网页版指引保持一致）
+GUIDE_SECTIONS = [
+    ("这个工具是干什么的", [
+        "它回答一个问题：同样的一笔钱，与其买死不动，不如在大跌时把一部分换成杠杆 "
+        "ETF、在大涨后再换回来，长期能多赚多少、要多扛多少回撤？",
+        "所有计算都在本机用真实历史收盘价跑完，不上传任何数据。",
+    ]),
+    ("策略只有两条规则", [
+        "① 回撤补仓（越跌越上杠杆）：基准端（如 SMH）从历史最高点跌到 "
+        "-15%/-25%/-35%/-45%/-50% 某一档时，卖掉当时基准端市值的指定比例，"
+        "全部买入杠杆端（如 SOXL）。每档在同一轮下跌中只触发一次。",
+        "② 反弹减仓（涨回来就落袋）：基准端从「有效底部」反弹 +50%/+100%/+200% "
+        "某一档时，卖掉当时杠杆端市值的指定比例，换回基准端。",
+        "「有效底部」＝本轮自高点回撤超过 25% 后出现的最低价。小幅回调不算新底部，"
+        "避免刚跌一点就被误判成「抄到底」。",
+    ]),
+    ("四步跑出第一个结果", [
+        "1. 选数据源：SMH/SOXL（半导体 3 倍）、QQQ/TQQQ（纳指 3 倍）、"
+        "SMH/USD（半导体 2 倍）。切换后日期、推荐值、标的名会自动重置。",
+        "2. 填投入金额：基准端与杠杆端各投多少美元，默认各 5 万；再确认买入与"
+        "结束日期。",
+        "3. 设置档位百分比：不确定填多少就点底部「重置参数」，会填入该数据源近 "
+        "10 年收益最优的网格搜索推荐值（输入框右侧灰字即推荐值）。填 0 表示这一档"
+        "不操作。",
+        "4. 点「开始分析」。改任何参数后重新点一次即可。",
+    ]),
+    ("结果怎么看", [
+        "· 参数区顶部状态行：显示当前最新价、距峰值跌幅、距有效底部涨幅；每个档位"
+        "输入框旁会给出「还要跌/涨到多少钱才会触发」的价格——这是把回测结论用到"
+        "实盘的地方。",
+        "· 计算结果区（窗口底部）：最终基准端资金、最终杠杆端资金、最终总资金，"
+        "以及「全买基准端不动」「全买杠杆端不动」两个对照。",
+        "· 分析结果文本：关键指标（CAGR 年化、最大回撤、夏普、最长套牢天数）与"
+        "逐笔交易明细——每笔含日期、方向、换仓金额、当天两端成交价（按当日收盘价"
+        "成交）、成交后总资金。",
+        "· 净值曲线：动态策略 vs 50-50 不动 vs 纯持基准 vs 纯持杠杆，四条线同口径"
+        "对比；红三角＝补仓、绿箭头＝减仓；鼠标悬停可看当日各条曲线数值。",
+        "· 「📊 标的对比看板」：同一区间内几组标的横向比谁更强。",
+        "· 「🔄 更新数据」：抓取 QQQ/TQQQ/SMH/SOXL/USD 最新行情到 Input 目录，"
+        "抓完状态行与触发价会自动刷新。",
+    ]),
+    ("必须知道的三点", [
+        "· 本策略放大下跌、不保护下跌：越跌越加杠杆，极端行情下可能在最低点满仓"
+        "杠杆，回撤远大于纯持基准。",
+        "· 参数是在历史数据上找最优，存在过拟合，未来不会原样重现。",
+        "· 结果仅为研究用途，不构成投资建议。",
+    ]),
+]
+
 # 回测优化得到的推荐比例（虚化显示在输入框右侧，供参考）
 # SMH/SOXL 最近 10 年窗口收益最大化：回撤 -25% 换 35% 到 SOXL，
 # 再跌到 -35% 把剩余 SMH 全换；反弹 +200% 把 SOXL 全换回 SMH
@@ -319,6 +368,8 @@ class SMHApp:
                    command=self.on_reset_recommend).pack(side="left", padx=8)
         ttk.Button(btn_frame, text="清空",
                    command=self.on_clear).pack(side="left", padx=8)
+        ttk.Button(btn_frame, text="❓ 使用说明",
+                   command=self.show_guide).pack(side="right")
 
         # ===== 可滚动主区域（标题 + 参数输入 + 分析结果），填充剩余空间 =====
         outer = ttk.Frame(self.root)
@@ -523,6 +574,47 @@ class SMHApp:
         self.chart_canvas.get_tk_widget().pack(fill="both", expand=True)
 
     # ===== 事件 =====
+    def show_guide(self):
+        """弹出「使用说明」窗口：可滚动只读文本，内容同网页版新手指引。"""
+        # 已打开则直接前置，避免重复窗口
+        win = getattr(self, "_guide_win", None)
+        if win is not None and win.winfo_exists():
+            win.deiconify()
+            win.lift()
+            win.focus_force()
+            return
+
+        win = tk.Toplevel(self.root)
+        self._guide_win = win
+        win.title("使用说明 · 第一次使用先看这里")
+        win.geometry("720x620")
+        win.minsize(560, 420)
+
+        ttk.Label(win, text="📖 第一次使用？30 秒上手",
+                  style="Header.TLabel").pack(anchor="w", padx=16, pady=(14, 2))
+        ttk.Label(win, text="本窗口可随时通过底部「❓ 使用说明」再次打开",
+                  style="Sub.TLabel").pack(anchor="w", padx=16, pady=(0, 6))
+
+        box = scrolledtext.ScrolledText(win, wrap="word", padx=12, pady=10,
+                                        font=("Helvetica", 12), relief="flat",
+                                        background="#FBFCFE")
+        box.pack(fill="both", expand=True, padx=14, pady=(0, 8))
+        box.tag_configure("h", font=("Helvetica", 13, "bold"),
+                          foreground=PRIMARY, spacing1=10, spacing3=6)
+        box.tag_configure("p", spacing3=6, lmargin1=4, lmargin2=16)
+        box.tag_configure("warn", foreground="#C62828",
+                          spacing3=6, lmargin1=4, lmargin2=16)
+
+        for title, lines in GUIDE_SECTIONS:
+            box.insert("end", title + "\n", "h")
+            for ln in lines:
+                tag = "warn" if "放大下跌" in ln else "p"
+                box.insert("end", ln + "\n", tag)
+        box.configure(state="disabled")
+
+        ttk.Button(win, text="知道了", style="Primary.TButton",
+                   command=win.destroy).pack(pady=(0, 14))
+
     def open_compare(self):
         """打开标的对比看板窗口：沿用主界面当前的本金与起止日期，两组同区间回测。"""
         try:
