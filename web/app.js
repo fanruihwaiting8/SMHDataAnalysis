@@ -307,6 +307,9 @@
     });
 
     // 交易标记点叠加到策略曲线上
+    // tradeByDate：当日交易索引，供 tooltip 显示该日成交类型与双边成交价
+    const tradeByDate = {};
+    res.tradeMarks.forEach((t) => { tradeByDate[t.date] = t; });
     if (on.strategy && res.tradeMarks.length) {
       const dateIdx = {};
       res.equityDates.forEach((d, i) => dateIdx[d] = i);
@@ -326,6 +329,13 @@
         formatter: (ps) => {
           let s = ps[0].axisValueLabel + "<br/>";
           ps.forEach((p) => { s += `${p.marker}${p.seriesName}: $${(+p.value).toLocaleString()}<br/>`; });
+          // 该日若发生补仓/减仓，附带当日成交价（收盘价即成交价）
+          const tr = tradeByDate[ps[0].axisValueLabel];
+          if (tr) {
+            const col = tr.kind === "补仓" ? "#f85149" : "#3fb950";
+            s += `<span style="color:${col}">● ${tr.kind}</span> `
+              + `${src.na} ${fmtPrice(tr.priceA)} / ${src.nb} ${fmtPrice(tr.priceB)}<br/>`;
+          }
           return s;
         },
       },
@@ -347,13 +357,20 @@
 
   // ---- 逐笔交易表 ----
   function renderTrades(res, src) {
+    // 表头的价格列名随数据源变化（如 SMH 成交价 / SOXL 成交价）
+    $("thPriceA").textContent = `${src.na} 成交价`;
+    $("thPriceB").textContent = `${src.nb} 成交价`;
     // 计算每笔成交后总资金：用 tradeMarks 的 equity（与 trades 一一对应）
+    // trades 元素为 [日期, 类型, 说明, 基准端成交价, 杠杆端成交价]，
+    // 价格即成交当日两标的收盘价（本模型按收盘价换仓）。
     const rows = res.trades.map((t, i) => {
       const eq = res.tradeMarks[i] ? fmtMoney(res.tradeMarks[i].equity) : "-";
       const cls = t[1] === "补仓" ? "buy" : "sell";
-      return `<tr><td>${t[0]}</td><td class="${cls}">${t[1]}</td><td>${t[2]}</td><td>${eq}</td></tr>`;
+      const pa = t[3] != null ? fmtPrice(t[3]) : "-";
+      const pb = t[4] != null ? fmtPrice(t[4]) : "-";
+      return `<tr><td>${t[0]}</td><td class="${cls}">${t[1]}</td><td>${t[2]}</td><td>${pa}</td><td>${pb}</td><td>${eq}</td></tr>`;
     });
-    $("tradeBody").innerHTML = rows.join("") || `<tr><td colspan="4">当前参数下无交易</td></tr>`;
+    $("tradeBody").innerHTML = rows.join("") || `<tr><td colspan="6">当前参数下无交易</td></tr>`;
     $("tradeCount").textContent = `共 ${res.trades.length} 笔`;
   }
 

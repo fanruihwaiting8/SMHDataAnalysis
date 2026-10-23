@@ -187,7 +187,7 @@
     <h2>逐笔交易明细 <span class="note" id="tradeCount"></span></h2>
     <div class="tbl-wrap">
       <table>
-        <thead><tr><th>成交日</th><th>类型</th><th>说明</th><th>成交后总资金</th></tr></thead>
+        <thead><tr><th>成交日</th><th>类型</th><th>说明</th><th id="thPriceA">基准端成交价</th><th id="thPriceB">杠杆端成交价</th><th>成交后总资金</th></tr></thead>
         <tbody id="tradeBody"></tbody>
       </table>
     </div>
@@ -201,8 +201,8 @@
 </div>
 
 <script src="data.js?v=4"></script>
-<script src="backtest.js?v=5"></script>
-<script src="app.js?v=5"></script>
+<script src="backtest.js?v=6"></script>
+<script src="app.js?v=6"></script>
 <script>
 // 点击「更新最新数据」：请求本地服务联网抓取五标的行情并重建 data.js，完成后刷新页面。
 (function () {

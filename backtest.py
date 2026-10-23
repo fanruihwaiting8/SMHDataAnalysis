@@ -102,7 +102,9 @@ def run_backtest(smh_capital: float, smh3_capital: float,
       {
         "start_date": ..., "end_date": ...,
         "final_smh": ..., "final_smh3": ..., "final_total": ...,
-        "trades": [ (date, action, detail), ... ]
+        "trades": [ (date, action, detail, price_a, price_b), ... ]
+                   price_a / price_b 为成交当日基准端与杠杆端的收盘价
+                   （本策略按当日收盘价换仓，故即为成交价）。
       }
     """
     smh_series = _load_close_series(smh_csv)
@@ -229,11 +231,13 @@ def run_backtest(smh_capital: float, smh3_capital: float,
                     trades.append((
                         date, "补仓",
                         f"{name_a}回撤-{lv}%，卖出{name_a}市值{move:.2f}"
-                        f"买入{name_b}"))
+                        f"买入{name_b}",
+                        smh_price, smh3_price))
                     trade_marks.append({
                         "date": date, "kind": "补仓",
                         "equity": smh_shares * smh_price
-                        + smh3_shares * smh3_price})
+                        + smh3_shares * smh3_price,
+                        "price_a": smh_price, "price_b": smh3_price})
                 dd_fired.add(lv)
 
         # ===== 形成/刷新有效底部 active_trough =====
@@ -282,11 +286,13 @@ def run_backtest(smh_capital: float, smh3_capital: float,
                     trades.append((
                         date, "减仓",
                         f"{name_a}反弹+{lv}%，卖出{name_b}市值{move:.2f}"
-                        f"买入{name_a}"))
+                        f"买入{name_a}",
+                        smh_price, smh3_price))
                     trade_marks.append({
                         "date": date, "kind": "减仓",
                         "equity": smh_shares * smh_price
-                        + smh3_shares * smh3_price})
+                        + smh3_shares * smh3_price,
+                        "price_a": smh_price, "price_b": smh3_price})
                 rb_fired.add(lv)
 
     final_smh = smh_shares * smh_series[end_date]

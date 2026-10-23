@@ -106,8 +106,8 @@ const smhSeries = seriesMap(keyA);
           const move = smhValue * ratio;
           smhShares -= move / pa;
           smh3Shares += move / pb;
-          trades.push([date, "补仓", `${keyA}回撤-${lv}%，卖出${keyA}市值${move.toFixed(2)}买入${keyB}`]);
-          tradeMarks.push({ date, kind: "补仓", equity: smhShares * pa + smh3Shares * pb });
+          trades.push([date, "补仓", `${keyA}回撤-${lv}%，卖出${keyA}市值${move.toFixed(2)}买入${keyB}`, pa, pb]);
+          tradeMarks.push({ date, kind: "补仓", equity: smhShares * pa + smh3Shares * pb, priceA: pa, priceB: pb });
         }
         ddFired.add(lv);
       }
@@ -139,8 +139,8 @@ const smhSeries = seriesMap(keyA);
           const move = smh3Value * ratio;
           smh3Shares -= move / pb;
           smhShares += move / pa;
-          trades.push([date, "减仓", `${keyA}反弹+${lv}%，卖出${keyB}市值${move.toFixed(2)}买入${keyA}`]);
-          tradeMarks.push({ date, kind: "减仓", equity: smhShares * pa + smh3Shares * pb });
+          trades.push([date, "减仓", `${keyA}反弹+${lv}%，卖出${keyB}市值${move.toFixed(2)}买入${keyA}`, pa, pb]);
+          tradeMarks.push({ date, kind: "减仓", equity: smhShares * pa + smh3Shares * pb, priceA: pa, priceB: pb });
         }
         rbFired.add(lv);
       }

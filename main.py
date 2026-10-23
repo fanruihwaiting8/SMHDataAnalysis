@@ -897,8 +897,11 @@ class SMHApp:
         if result["trades"]:
             lines.append("")
             lines.append("----- 交易明细 -----")
-            for d, action, detail in result["trades"]:
-                lines.append(f"[{d}] {action}｜{detail}")
+            for d, action, detail, price_a, price_b in result["trades"]:
+                lines.append(
+                    f"[{d}] {action}｜{detail}"
+                    f"｜成交价 {self._name_a()} {price_a:.2f} / "
+                    f"{self._name_b()} {price_b:.2f}")
 
         # 模型认定的底部（反弹基准点 trough）及其日期
         troughs = result.get("troughs", [])
