@@ -214,10 +214,31 @@
     box.style.display = "";
   }
 
+  // 勾选框右侧：截止回测末日为止，实际已注入的定投总额（期数 × 每月金额），
+  // 并给出「起始本金 + 定投 = 累计投入」，避免只看最终资金时忽略陆续投进去的钱。
+  // 用回测返回的真实现金流（flows）统计，而不是按月份数估算，口径与引擎完全一致。
+  function renderDcaSum(res) {
+    const el = $("dcaSum");
+    if (!el) return;
+    if (!dcaOn() || !res || !res.flows || !(res.monthlyCash > 0)) {
+      el.style.display = "none"; el.innerHTML = ""; return;
+    }
+    let n = 0, sum = 0;
+    for (let i = 1; i < res.flows.length; i++) {
+      const f = res.flows[i];
+      if (f > 0) { n++; sum += f; }
+    }
+    const principal = (res.totalInvested || 0) - sum;
+    const lastDate = res.equityDates[res.equityDates.length - 1];
+    el.innerHTML = `截止 ${lastDate} 累计定投 <b>${fmtMoney(sum)}</b>`
+      + `（${n} 期 × ${fmtMoney(res.monthlyCash)}/月）`
+      + `；起始本金 ${fmtMoney(principal)} + 定投 = 累计投入 <b>${fmtMoney(res.totalInvested)}</b>`;
+    el.style.display = "";
+  }
+
   function fmtMoney(v) {
     return "$" + Math.round(v).toLocaleString("en-US");
-  }
-  function fmtPct(v) { return (v * 100).toFixed(1) + "%"; }
+  }  function fmtPct(v) { return (v * 100).toFixed(1) + "%"; }
 
   // ---- 更新数据源可选日期范围提示 ----
   // resetDates=true 时（如切换数据源）强制把起止日对齐到新区间的两端，
@@ -678,6 +699,7 @@
       return;
     }
     lastResult = { res, src };
+    renderDcaSum(res);
     renderMetrics(res);
     renderChart(res, src);
     renderTrades(res, src);
