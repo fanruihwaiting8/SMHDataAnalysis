@@ -114,7 +114,7 @@ function show(lvs, arr) {
 
 var argv = (typeof arguments !== 'undefined') ? arguments : [];
 var key = (argv[0] || 'SMH').toUpperCase();
-var mpct = argv.length > 1 ? parseFloat(argv[1]) : 2;
+var mpct = argv.length > 1 ? parseFloat(argv[1]) : 1;
 var g = GROUPS[key];
 if (!g) { print('未知组合 ' + key); } else {
   var c = buildCtx(g[0], g[1]);
