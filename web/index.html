@@ -78,6 +78,26 @@
   .trig.hit { color: var(--accent); font-weight: 600; }
   .field { min-width: 118px; }
   .cmp-tbl td.pos { color: var(--down); } .cmp-tbl td.neg { color: var(--up); }
+  /* 新手使用指引（可折叠） */
+  .guide summary {
+    cursor: pointer; font-size: 16px; font-weight: 700; list-style: none;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .guide summary::-webkit-details-marker { display: none; }
+  .guide summary::after { content: "▸"; color: var(--muted); font-weight: 400; }
+  .guide[open] summary::after { content: "▾"; }
+  .guide .body { font-size: 13px; color: var(--text); margin-top: 12px; }
+  .guide h3 {
+    font-size: 13px; margin: 16px 0 6px; color: var(--accent); font-weight: 700;
+  }
+  .guide h3:first-child { margin-top: 0; }
+  .guide ol, .guide ul { margin: 6px 0; padding-left: 20px; }
+  .guide li { margin: 3px 0; }
+  .guide code {
+    background: #0d1117; border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 5px; font-size: 12px;
+  }
+  .guide .warn { color: var(--up); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -88,6 +108,49 @@
     <button class="ghost" id="updateData">🔄 更新最新数据</button>
     <span class="note" id="updateStatus"></span>
   </div>
+
+  <!-- 新手使用指引：默认展开，老用户可折叠 -->
+  <details class="card guide" id="guide" open>
+    <summary>📖 第一次使用？先看这里（30 秒上手）</summary>
+    <div class="body">
+      <h3>这个工具是干什么的</h3>
+      <p style="margin:4px 0">
+        它回答一个问题：<b>「同样的一笔钱，与其买死不动，不如在大跌时把一部分换成杠杆 ETF、在大涨后再换回来，长期能多赚多少、要多扛多少回撤？」</b>
+        所有计算都用真实历史收盘价在你的浏览器里跑完，不上传任何数据。
+      </p>
+
+      <h3>策略只有两条规则</h3>
+      <ul>
+        <li><b>回撤补仓（越跌越上杠杆）</b>：基准端（如 SMH）从历史最高点跌到 -15%/-25%/-35%… 某一档时，卖掉当时基准端市值的指定比例，全部买入杠杆端（如 SOXL）。每档在同一轮下跌中只触发一次。</li>
+        <li><b>反弹减仓（涨回来就落袋）</b>：基准端从「有效底部」反弹 +50%/+100%/+200% 某一档时，卖掉当时杠杆端市值的指定比例，换回基准端。</li>
+        <li><b>有效底部</b>＝本轮自高点回撤超过 25% 后出现的最低价。小幅回调不算新底部，避免刚跌一点就被误判成「抄到底」。</li>
+      </ul>
+
+      <h3>四步跑出第一个结果</h3>
+      <ol>
+        <li><b>选数据源</b>：SMH/SOXL（半导体 3 倍）、QQQ/TQQQ（纳指 3 倍）、SMH/USD（半导体 2 倍）。</li>
+        <li><b>填投入金额</b>：基准端与杠杆端各投多少美元，默认各 5 万。</li>
+        <li><b>设置档位百分比</b>：不确定填多少就直接点 <code>填入推荐参数</code>（该数据源近 10 年收益最优的网格搜索结果）。填 <code>0</code> 表示这一档不操作。</li>
+        <li>点 <code>运行回测</code>。改任何参数后重新点一次即可。</li>
+      </ol>
+
+      <h3>结果怎么看</h3>
+      <ul>
+        <li><b>参数区的状态条与小字</b>：显示当前最新价、距峰值跌幅、距有效底部涨幅，以及每一档<b>还要跌/涨到多少钱才会触发</b>——这是把回测结论用到实盘的地方。</li>
+        <li><b>关键指标</b>：最终总资金、CAGR 年化、最大回撤（越小越好）、夏普、最长套牢天数。</li>
+        <li><b>净值曲线</b>：动态策略 vs 50-50 不动 vs 纯持基准 vs 纯持杠杆，四条线同口径对比；红三角＝补仓、绿箭头＝减仓；鼠标悬停看当日各条曲线数值与当日成交价。资金差距过大时勾上「对数坐标」更易读。</li>
+        <li><b>组合横向对比</b>：同一区间内几组标的谁更强。</li>
+        <li><b>逐笔交易明细</b>：每次换仓的日期、方向、换了多少钱、<b>当天两端的成交价</b>（本模型按当日收盘价成交）、成交后总资金。</li>
+      </ul>
+
+      <h3>必须知道的三点</h3>
+      <ul>
+        <li><span class="warn">本策略放大下跌、不保护下跌</span>：越跌越加杠杆，极端行情下可能在最低点满仓杠杆，回撤远大于纯持基准。</li>
+        <li>参数是在历史数据上找最优，<b>存在过拟合</b>，未来不会原样重现。</li>
+        <li>在线版行情为发布时的快照；想抓最新数据请克隆仓库后用 <code>python web/serve.py</code> 本地运行。结果仅为研究用途，<b>不构成投资建议</b>。</li>
+      </ul>
+    </div>
+  </details>
 
   <!-- 参数区 -->
   <div class="card">
@@ -203,6 +266,19 @@
 <script src="data.js?v=4"></script>
 <script src="backtest.js?v=6"></script>
 <script src="app.js?v=6"></script>
+<script>
+// 使用指引的展开/折叠状态记忆：首次访问默认展开，用户折叠后下次保持折叠。
+(function () {
+  var g = document.getElementById('guide');
+  if (!g) return;
+  try {
+    if (localStorage.getItem('smh_guide_closed') === '1') g.open = false;
+    g.addEventListener('toggle', function () {
+      localStorage.setItem('smh_guide_closed', g.open ? '0' : '1');
+    });
+  } catch (e) { /* 隐私模式下 localStorage 不可用，忽略 */ }
+})();
+</script>
 <script>
 // 点击「更新最新数据」：请求本地服务联网抓取五标的行情并重建 data.js，完成后刷新页面。
 (function () {
