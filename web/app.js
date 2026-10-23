@@ -351,43 +351,90 @@
     };
   }
 
-  // 进场后的价位清单：补仓触发价按「进场价即新峰值基准」重新起算
-  function renderAdvicePrices(src, st, dd, rb, pxA) {
-    const ddLv = DD.filter((lv) => (dd[lv] || 0) > 0);
-    const rbLv = RB.filter((lv) => (rb[lv] || 0) > 0);
-
-    let h = '<div class="adv-sec">什么价位买：进场后的补仓触发价</div>';
-    h += '<div class="note" style="margin-bottom:8px">'
-      + `进场当天即把 ${src.na} 进场价 <b>${fmtPrice(pxA)}</b> 记为新的峰值基准`
-      + "（历史峰值和此前已用掉的档位都不再影响你的后续动作），"
-      + "此后每跌到下表价位，就按对应比例把基准端资金换成杠杆端。"
-      + `这与上方「基于历史峰值 ${fmtPrice(st.peak)}」的触发价是两套口径，不要混用。</div>`;
-
-    if (!ddLv.length) {
-      h += '<div class="note">当前补仓参数各档均为 0%，进场后不会触发任何补仓动作。</div>';
-    } else {
-      h += '<table class="cmp-tbl"><thead><tr><th>回撤档</th><th>触发价（跌到）</th>'
-        + "<th>距进场价</th><th>动作</th></tr></thead><tbody>";
-      ddLv.forEach((lv) => {
-        h += `<tr><td>-${lv}%</td><td>${fmtPrice(pxA * (1 - lv / 100))}</td>`
-          + `<td>-${lv}%</td>`
-          + `<td>把基准端当时剩余资金的 <b>${dd[lv]}%</b> 换成 ${src.nb}</td></tr>`;
-      });
-      h += "</tbody></table>";
+  // 加杠杆清单：继续下跌时，跌到哪个价位、把多少钱从基准端换成杠杆端。
+  // 价格基准沿用策略真实状态（历史峰值 + 本轮已触发档），与上方触发价完全一致。
+  function adviceAddTable(src, st, dd, capA) {
+    const lvs = DD.filter((lv) => (dd[lv] || 0) > 0);
+    if (!lvs.length) {
+      return `<div class="note">当前补仓参数各档均为 0%，不会再把 ${src.na} 换成 ${src.nb}。</div>`;
     }
+    const fired = new Set(st.ddFired);
+    let h = '<table class="cmp-tbl"><thead><tr><th>回撤档</th><th>触发价</th><th>距现价</th>'
+      + `<th>买入 ${src.nb}</th><th>剩余 ${src.na}</th></tr></thead><tbody>`;
+    let remain = capA;
+    lvs.forEach((lv) => {
+      const tp = st.ddTriggerPrices[lv];
+      if (fired.has(lv)) {
+        h += `<tr style="opacity:.55"><td>-${lv}%</td><td>${fmtPrice(tp)}</td>`
+          + '<td colspan="3">本轮已触发过（须创新高后才重置）——进场后不用再等这一档</td></tr>';
+        return;
+      }
+      const gap = ((st.latestPrice - tp) / st.latestPrice) * 100;
+      const amt = remain * dd[lv] / 100;
+      remain -= amt;
+      h += `<tr><td>-${lv}%</td><td><b>${fmtPrice(tp)}</b></td>`
+        + `<td>${gap > 0 ? `还需跌 ${gap.toFixed(2)}%` : "✓ 现价已低于该价，可立即执行"}</td>`
+        + `<td><b>${fmtMoney(amt)}</b>（当时 ${src.na} 的 ${dd[lv]}%）</td>`
+        + `<td>${fmtMoney(remain)}</td></tr>`;
+    });
+    return h + "</tbody></table>";
+  }
 
-    const need = pxA * (1 - BT.TROUGH_TRIGGER_PCT / 100);
-    h += '<div class="adv-sec">什么价位卖：进场后的减仓规则</div>';
-    h += '<div class="note">减仓触发价要等「新的有效底部」出现后才算得出：'
-      + `需先自进场后的最高价回撤超过 ${BT.TROUGH_TRIGGER_PCT.toFixed(0)}%`
-      + `（若进场后一直没创新高，即跌破 <b>${fmtPrice(need)}</b>），`
-      + "该轮最低点才会成为有效底部；随后自该底部每反弹到 "
-      + (rbLv.length
-        ? rbLv.map((lv) => `+${lv}%（换回 ${rb[lv]}%）`).join("、")
-        : "设定的各档位")
-      + `，就把杠杆端资金按比例换回 ${src.na}。`
-      + "底部出现后，上方「减仓触发价」会自动按新底部给出具体价格。</div>";
-    return h;
+  // 减杠杆清单：自有效底部反弹到哪个价位、把多少钱从杠杆端换回基准端
+  function adviceCutTable(src, st, rb, capB) {
+    const lvs = RB.filter((lv) => (rb[lv] || 0) > 0);
+    if (!lvs.length) {
+      return `<div class="note">当前减仓参数各档均为 0%，不会把 ${src.nb} 换回 ${src.na}。</div>`;
+    }
+    const fired = new Set(st.rbFired);
+    let h = '<table class="cmp-tbl"><thead><tr><th>反弹档</th><th>触发价</th><th>距现价</th>'
+      + `<th>卖 ${src.nb} 换回 ${src.na}</th><th>剩余 ${src.nb}</th></tr></thead><tbody>`;
+    let remain = capB;
+    lvs.forEach((lv) => {
+      const tp = st.rbTriggerPrices[lv];
+      if (fired.has(lv)) {
+        h += `<tr style="opacity:.55"><td>+${lv}%</td><td>${fmtPrice(tp)}</td>`
+          + '<td colspan="3">对该底部已触发过（须跌出新底部后才重置）</td></tr>';
+        return;
+      }
+      const gap = ((tp - st.latestPrice) / st.latestPrice) * 100;
+      const amt = remain * rb[lv] / 100;
+      remain -= amt;
+      h += `<tr><td>+${lv}%</td><td><b>${fmtPrice(tp)}</b></td>`
+        + `<td>${gap > 0 ? `还需涨 ${gap.toFixed(2)}%` : "✓ 现价已高于该价，可立即执行"}</td>`
+        + `<td><b>${fmtMoney(amt)}</b>（当时 ${src.nb} 的 ${rb[lv]}%）</td>`
+        + `<td>${fmtMoney(remain)}</td></tr>`;
+    });
+    return h + "</tbody></table>";
+  }
+
+  // 进场后的动作清单：按当前阶段决定先看加杠杆还是先看减杠杆
+  function renderAdviceActions(src, st, dd, rb, capA, capB) {
+    const stale = st.troughStale;   // true = 有效底部属上一轮，主线是继续等补仓
+    const need = st.peak * (1 - BT.TROUGH_TRIGGER_PCT / 100);
+
+    const addBlk = `<div class="adv-sec">继续下跌时：跌到多少买 ${src.nb}`
+      + `${stale ? "（当前阶段的主线）" : ""}</div>`
+      + '<div class="note" style="margin-bottom:8px">'
+      + `价格基准是历史最高 ${fmtPrice(st.peak)}（${st.peakDate}），`
+      + "与上方「补仓触发价」完全一致；金额按上面的推荐配比推演（未计中途涨跌）。</div>"
+      + adviceAddTable(src, st, dd, capA);
+
+    let cutBlk = `<div class="adv-sec">反弹走高时：涨到多少把 ${src.nb} 换回 ${src.na}`
+      + `${stale ? "" : "（当前阶段的主线）"}</div>`;
+    if (stale) {
+      cutBlk += `<div class="note">当前有效底部 ${fmtPrice(st.activeTrough)}`
+        + `（${st.troughDate}）来自上一轮下跌，现价已高出 ${st.rbPct.toFixed(2)}%，`
+        + "减仓档位暂不适用：需先自峰值回撤超过 "
+        + `${BT.TROUGH_TRIGGER_PCT.toFixed(0)}%（跌破 <b>${fmtPrice(need)}</b>）跌出新底部，`
+        + "减仓才重新计时，届时上方「减仓触发价」会按新底部给出具体价格。</div>";
+    } else {
+      cutBlk += '<div class="note" style="margin-bottom:8px">价格基准是本轮有效底部 '
+        + `${fmtPrice(st.activeTrough)}（${st.troughDate}），`
+        + "与上方「减仓触发价」完全一致；金额按上面的推荐配比推演（未计中途涨跌）。</div>"
+        + adviceCutTable(src, st, rb, capB);
+    }
+    return stale ? addBlk + cutBlk : cutBlk + addBlk;
   }
 
   // 单个方案框：初始买法 + 该配比在样本上的表现
@@ -482,7 +529,9 @@
       : `距有效底部涨幅 ${st.rbPct.toFixed(2)}% ±${ADVICE_RB_TOL} 个百分点`;
     const holdYear = (holdDays / 252).toFixed(0);
 
-    let html = '<div class="adv-kv" style="margin-bottom:12px">'
+    let html = '<div class="note" style="margin-bottom:10px">'
+      + `以下结论只针对当前选中的 <b>${src.na} / ${src.nb}</b> 组合，回撤/反弹档位取该组合自己的推荐参数，不与其他组合横向比较。`
+      + '</div><div class="adv-kv" style="margin-bottom:12px">'
       + `进场日：<b>${st.latestDate}</b>（数据源最新交易日）`
       + `　|　进场价：${src.na} <b>${fmtPrice(pxA)}</b>`
       + (pxB ? `、${src.nb} <b>${fmtPrice(pxB)}</b>` : "")
@@ -499,7 +548,7 @@
         + "按样本择优会严重过拟合，故不给出具体配比。"
         + "可退一步按策略本身的逻辑执行：此刻先全额买入基准端，"
         + "把杠杆端额度留到下方各档补仓价再投入。</div>";
-      html += renderAdvicePrices(src, st, dd, rb, pxA);
+      html += renderAdviceActions(src, st, dd, rb, total, 0);
       body.innerHTML = html;
       return;
     }
@@ -515,7 +564,8 @@
     sub.textContent = `（基于 ${samples.length} 个历史同阶段样本）`;
     html += renderAdvicePlans(src, aggressive, balanced, total, holdDays);
     html += renderAdviceTable(rows, aggressive, balanced);
-    html += renderAdvicePrices(src, st, dd, rb, pxA);
+    const recW = aggressive.w;
+    html += renderAdviceActions(src, st, dd, rb, total * (100 - recW) / 100, total * recW / 100);
     body.innerHTML = html;
   }
 
