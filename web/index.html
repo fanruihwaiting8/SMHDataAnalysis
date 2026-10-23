@@ -65,6 +65,18 @@
   }
   .toggle span.on { background: var(--primary); color: #fff; border-color: var(--primary); }
   .note { font-size: 12px; color: var(--muted); }
+  /* 实时状态条：当前价 / 峰值跌幅、底部涨幅 */
+  .status {
+    font-size: 13px; margin: 0 0 10px; padding: 8px 12px;
+    border-radius: 8px; background: #0d1117; border: 1px solid var(--border);
+  }
+  .status b { font-weight: 700; }
+  .status.dd b { color: var(--up); }
+  .status.rb b { color: var(--down); }
+  /* 档位输入框下方的触发价小字 */
+  .trig { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+  .trig.hit { color: var(--accent); font-weight: 600; }
+  .field { min-width: 118px; }
   .cmp-tbl td.pos { color: var(--down); } .cmp-tbl td.neg { color: var(--up); }
 </style>
 </head>
@@ -113,10 +125,12 @@
 
   <div class="grp">
       <div class="lbl">▼ 回撤补仓：基准端相对峰值回撤达标时，卖出基准端市值的百分比转买杠杆端</div>
+      <div class="status dd" id="ddStatus"></div>
       <div class="row" id="ddRow"></div>
     </div>
     <div class="grp">
       <div class="lbl">▲ 反弹减仓：基准端相对有效底部反弹达标时，卖出杠杆端市值的百分比转买基准端</div>
+      <div class="status rb" id="rbStatus"></div>
       <div class="row" id="rbRow"></div>
     </div>
     <div class="grp row">
@@ -186,9 +200,9 @@
   </div>
 </div>
 
-<script src="data.js?v=3"></script>
-<script src="backtest.js?v=3"></script>
-<script src="app.js?v=4"></script>
+<script src="data.js?v=4"></script>
+<script src="backtest.js?v=5"></script>
+<script src="app.js?v=5"></script>
 <script>
 // 点击「更新最新数据」：请求本地服务联网抓取五标的行情并重建 data.js，完成后刷新页面。
 (function () {

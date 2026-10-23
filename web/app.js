@@ -126,11 +126,13 @@
   function buildInputs() {
     $("ddRow").innerHTML = DD.map((lv) =>
       `<div class="field"><label>回撤 -${lv}%</label>
-       <input class="dd" data-lv="${lv}" type="number" value="${REC_DD[lv]}" /></div>`
+       <input class="dd" data-lv="${lv}" type="number" value="${REC_DD[lv]}" />
+       <div class="trig" id="ddTrig-${lv}"></div></div>`
     ).join("");
     $("rbRow").innerHTML = RB.map((lv) =>
       `<div class="field"><label>反弹 +${lv}%</label>
-       <input class="rb" data-lv="${lv}" type="number" value="${REC_RB[lv]}" /></div>`
+       <input class="rb" data-lv="${lv}" type="number" value="${REC_RB[lv]}" />
+       <div class="trig" id="rbTrig-${lv}"></div></div>`
     ).join("");
   }
 
@@ -169,10 +171,73 @@
     }
   }
 
+  // ---- 实时状态：当前价 vs 峰值跌幅 / 底部涨幅 + 各档触发价 ----
+  // 与桌面 GUI 的「计算触发价」按钮等价，但在网页上始终自动显示，无需点击。
+  // 触发价只取决于价格基准（peak / 有效底部），与投入资金和换仓比例无关，
+  // 因此切换数据源时才需要重算，改资金/比例不影响。
+  function fmtPrice(v) { return "$" + v.toFixed(2); }
+
+  function renderLiveState() {
+    const src = SOURCES[$("source").value];
+    let st = null;
+    try { st = BT.computeLiveState(src.a, src.b); } catch (e) { st = null; }
+    if (!st) {
+      $("ddStatus").textContent = "";
+      $("rbStatus").textContent = "";
+      return;
+    }
+
+    // 补仓模块顶部：现价较历史最高点的跌幅（创新高当日为 0%）
+    $("ddStatus").innerHTML = st.ddPct <= 0
+      ? `截至 ${st.latestDate}：${src.na} 现价 <b>${fmtPrice(st.latestPrice)}</b>`
+        + `，正处历史最高点（${st.peakDate}），较峰值跌幅 <b>0.00%</b>`
+      : `截至 ${st.latestDate}：${src.na} 现价 <b>${fmtPrice(st.latestPrice)}</b>`
+        + `，较历史最高 ${fmtPrice(st.peak)}（${st.peakDate}）跌幅 <b>${st.ddPct.toFixed(2)}%</b>`;
+
+    // 减仓模块顶部：现价较有效底部的涨幅（处于底部为 0%）
+    $("rbStatus").innerHTML = st.rbPct <= 0
+      ? `截至 ${st.latestDate}：${src.na} 现价 <b>${fmtPrice(st.latestPrice)}</b>`
+        + `，正处有效底部（${st.troughDate}），较底部涨幅 <b>0.00%</b>`
+      : `截至 ${st.latestDate}：${src.na} 现价 <b>${fmtPrice(st.latestPrice)}</b>`
+        + `，较有效底部 ${fmtPrice(st.activeTrough)}（${st.troughDate}）涨幅 <b>${st.rbPct.toFixed(2)}%</b>`;
+
+    // 各回撤档：跌到多少钱触发补仓 + 距触发还需跌多少
+    DD.forEach((lv) => {
+      const el = $(`ddTrig-${lv}`);
+      if (!el) return;
+      const tp = st.ddTriggerPrices[lv];
+      const gap = ((st.latestPrice - tp) / st.latestPrice) * 100.0;
+      if (gap <= 0) {
+        el.className = "trig hit";
+        el.innerHTML = `跌到 ${fmtPrice(tp)} 补仓<br/>✓ 已达（现价已低于触发价）`;
+      } else {
+        el.className = "trig";
+        el.innerHTML = `跌到 ${fmtPrice(tp)} 补仓<br/>还需跌 ${gap.toFixed(2)}%`;
+      }
+    });
+
+    // 各反弹档：涨到多少钱触发减仓 + 距触发还需涨多少
+    RB.forEach((lv) => {
+      const el = $(`rbTrig-${lv}`);
+      if (!el) return;
+      const tp = st.rbTriggerPrices[lv];
+      const gap = ((tp - st.latestPrice) / st.latestPrice) * 100.0;
+      if (gap <= 0) {
+        el.className = "trig hit";
+        el.innerHTML = `涨到 ${fmtPrice(tp)} 减仓<br/>✓ 已达（现价已高于触发价）`;
+      } else {
+        el.className = "trig";
+        el.innerHTML = `涨到 ${fmtPrice(tp)} 减仓<br/>还需涨 ${gap.toFixed(2)}%`;
+      }
+    });
+  }
+
   // ---- 主流程 ----
   let lastResult = null;
   function run() {
     const src = SOURCES[$("source").value];
+    // 先刷新实时状态（触发价与回测是否成功无关，放在最前面保证总能显示）
+    renderLiveState();
     const { dd, rb } = readParams();
     const capA = +$("capA").value || 0;
     const capB = +$("capB").value || 0;

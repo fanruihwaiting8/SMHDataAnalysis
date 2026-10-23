@@ -205,4 +205,79 @@ function calcMetrics(dates, equity) {
   };
 }
 
-window.SMH_BT = { runBacktest, calcMetrics, commonDates, DRAWDOWN_LEVELS, REBOUND_LEVELS };
+// ===== 实时状态：当前峰值 / 有效底部 / 各档触发价 =====
+// 由 backtest.py 的 compute_live_state 逐行移植。只跟踪价格基准状态
+// （peak / activeTrough / segLow / dd_fired / rb_fired），不做任何资金计算——
+// 触发价只与价格基准有关，与投入资金和换仓比例无关。
+function computeLiveState(keyA, keyB) {
+  const sa = seriesMap(keyA);
+  const all = commonDates(keyA, keyB);
+  if (all.length === 0) return null;
+
+  const start = all[0];
+  const p0 = sa[start];
+  if (!(p0 > 0)) return null;
+
+  let peak = p0, peakDate = start;
+  let activeTrough = p0, troughDate = start;
+  const ddFired = new Set(), rbFired = new Set();
+  let segActive = false, segLow = null, segLowDate = null;
+
+  for (let i = 1; i < all.length; i++) {
+    const date = all[i], price = sa[date];
+
+    // 创新高：peak 上移、清 ddFired、结束本段最低点跟踪
+    if (price > peak) {
+      peak = price; peakDate = date;
+      ddFired.clear();
+      segActive = false; segLow = null; segLowDate = null;
+      continue;
+    }
+
+    if (segLow === null || price < segLow) { segLow = price; segLowDate = date; }
+
+    const ddPct = ((peak - price) / peak) * 100.0;
+    for (const lv of DRAWDOWN_LEVELS) {
+      if (!ddFired.has(lv) && ddPct >= lv) ddFired.add(lv);
+    }
+
+    // 形成/刷新有效底部（自峰值回撤≥25% 才构成新底部）
+    if (ddPct >= TROUGH_TRIGGER_PCT) {
+      if (!segActive) {
+        segActive = true; activeTrough = segLow; troughDate = segLowDate;
+        rbFired.clear();
+      } else if (segLow < activeTrough) {
+        activeTrough = segLow; troughDate = segLowDate;
+        rbFired.clear();
+      }
+    }
+
+    const rbPct = activeTrough > 0
+      ? ((price - activeTrough) / activeTrough) * 100.0 : 0.0;
+    for (const lv of REBOUND_LEVELS) {
+      if (!rbFired.has(lv) && rbPct >= lv) rbFired.add(lv);
+    }
+  }
+
+  const latestDate = all[all.length - 1];
+  const latestPrice = sa[latestDate];
+
+  const ddTriggerPrices = {}, rbTriggerPrices = {};
+  for (const lv of DRAWDOWN_LEVELS) ddTriggerPrices[lv] = peak * (1 - lv / 100.0);
+  for (const lv of REBOUND_LEVELS) rbTriggerPrices[lv] = activeTrough * (1 + lv / 100.0);
+
+  return {
+    peak, peakDate, activeTrough, troughDate, latestPrice, latestDate,
+    ddTriggerPrices, rbTriggerPrices,
+    ddFired: Array.from(ddFired), rbFired: Array.from(rbFired),
+    // 当前价相对峰值的跌幅 / 相对有效底部的涨幅（负值夹到 0，与桌面 GUI 一致）
+    ddPct: peak > 0 ? Math.max(0, ((peak - latestPrice) / peak) * 100.0) : 0,
+    rbPct: activeTrough > 0
+      ? Math.max(0, ((latestPrice - activeTrough) / activeTrough) * 100.0) : 0,
+  };
+}
+
+window.SMH_BT = {
+  runBacktest, calcMetrics, commonDates, computeLiveState,
+  DRAWDOWN_LEVELS, REBOUND_LEVELS, TROUGH_TRIGGER_PCT,
+};
