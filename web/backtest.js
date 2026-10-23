@@ -208,11 +208,24 @@ function calcMetrics(dates, equity) {
   };
 }
 
-// ===== 实时状态：当前峰值 / 有效底部 / 各档触发价 =====
+// ===== 阶段判定（与 backtest.py 同一套规则）=====
+// segActive=true 表示「自最近一次新高以来已回撤超过 TROUGH_TRIGGER_PCT」，
+// 此时 activeTrough 属于当前这一轮下跌，反弹减仓参考才有效；
+// segActive=false 则有效底部来自上一轮，减仓触发价没有实际参考意义。
+// 而在 segActive=true 的这一轮里，ddFired 的档位已经用掉，须创新高才重置。
+function classifyPhase(price, peak, rbPct, segActive) {
+  if (price >= peak) return { phase: "peak", phaseLabel: "创新高" };
+  if (!segActive) return { phase: "pullback", phaseLabel: "高位回调" };
+  if (rbPct < PHASE_REBOUND_PCT) return { phase: "bottoming", phaseLabel: "深度回撤探底" };
+  return { phase: "rebound", phaseLabel: "底部反弹" };
+}
+
+// ===== 价格基准状态机（唯一实现）=====
 // 由 backtest.py 的 compute_live_state 逐行移植。只跟踪价格基准状态
 // （peak / activeTrough / segLow / dd_fired / rb_fired），不做任何资金计算——
 // 触发价只与价格基准有关，与投入资金和换仓比例无关。
-function computeLiveState(keyA, keyB) {
+// onDay 可选：逐日回调当天状态快照，供 computeLiveState / phaseTimeline 共用。
+function replayState(keyA, keyB, onDay) {
   const sa = seriesMap(keyA);
   const all = commonDates(keyA, keyB);
   if (all.length === 0) return null;
@@ -234,8 +247,7 @@ function computeLiveState(keyA, keyB) {
       peak = price; peakDate = date;
       ddFired.clear();
       segActive = false; segLow = null; segLowDate = null;
-      continue;
-    }
+    } else {
 
     if (segLow === null || price < segLow) { segLow = price; segLowDate = date; }
 
@@ -260,10 +272,39 @@ function computeLiveState(keyA, keyB) {
     for (const lv of REBOUND_LEVELS) {
       if (!rbFired.has(lv) && rbPct >= lv) rbFired.add(lv);
     }
+
+    } // end else（非创新高日）
+
+    if (onDay) {
+      // 对外暴露的跌幅/涨幅统一把负值夹到 0（与桌面 GUI 一致）
+      const ddShow = peak > 0 ? Math.max(0, ((peak - price) / peak) * 100.0) : 0;
+      const rbShow = activeTrough > 0
+        ? Math.max(0, ((price - activeTrough) / activeTrough) * 100.0) : 0;
+      const ph = classifyPhase(price, peak, rbShow, segActive);
+      onDay({
+        index: i, date, price, ddPct: ddShow, rbPct: rbShow, segActive,
+        troughStale: !segActive, phase: ph.phase, phaseLabel: ph.phaseLabel,
+        peak, peakDate, activeTrough, troughDate, ddFired, rbFired,
+      });
+    }
   }
 
   const latestDate = all[all.length - 1];
-  const latestPrice = sa[latestDate];
+  return {
+    dates: all, series: sa,
+    peak, peakDate, activeTrough, troughDate,
+    segActive, ddFired, rbFired,
+    latestDate, latestPrice: sa[latestDate],
+  };
+}
+
+// ===== 实时状态：当前峰值 / 有效底部 / 各档触发价 =====
+function computeLiveState(keyA, keyB) {
+  const st = replayState(keyA, keyB, null);
+  if (!st) return null;
+
+  const peak = st.peak, activeTrough = st.activeTrough;
+  const latestPrice = st.latestPrice, segActive = st.segActive;
 
   const ddTriggerPrices = {}, rbTriggerPrices = {};
   for (const lv of DRAWDOWN_LEVELS) ddTriggerPrices[lv] = peak * (1 - lv / 100.0);
@@ -275,30 +316,37 @@ function computeLiveState(keyA, keyB) {
   const rbPct = activeTrough > 0
     ? Math.max(0, ((latestPrice - activeTrough) / activeTrough) * 100.0) : 0;
 
-  // ===== 阶段判定（与 backtest.py 同一套规则）=====
-  // segActive=true 表示「自最近一次新高以来已回撤超过 TROUGH_TRIGGER_PCT」，
-  // 此时 activeTrough 属于当前这一轮下跌，反弹减仓参考才有效；
-  // segActive=false 则有效底部来自上一轮，减仓触发价没有实际参考意义。
-  // 而在 segActive=true 的这一轮里，ddFired 的档位已经用掉，须创新高才重置。
-  let phase, phaseLabel;
-  if (latestPrice >= peak) { phase = "peak"; phaseLabel = "创新高"; }
-  else if (!segActive) { phase = "pullback"; phaseLabel = "高位回调"; }
-  else if (rbPct < PHASE_REBOUND_PCT) { phase = "bottoming"; phaseLabel = "深度回撤探底"; }
-  else { phase = "rebound"; phaseLabel = "底部反弹"; }
+  const ph = classifyPhase(latestPrice, peak, rbPct, segActive);
 
   return {
-    peak, peakDate, activeTrough, troughDate, latestPrice, latestDate,
+    peak, peakDate: st.peakDate, activeTrough, troughDate: st.troughDate,
+    latestPrice, latestDate: st.latestDate,
     ddTriggerPrices, rbTriggerPrices,
-    ddFired: Array.from(ddFired).sort((x, y) => x - y),
-    rbFired: Array.from(rbFired).sort((x, y) => x - y),
+    ddFired: Array.from(st.ddFired).sort((x, y) => x - y),
+    rbFired: Array.from(st.rbFired).sort((x, y) => x - y),
     ddPct, rbPct, segActive,
     // 有效底部是否属于上一轮下跌（true 时反弹减仓参考无实际意义）
     troughStale: !segActive,
-    phase, phaseLabel,
+    phase: ph.phase, phaseLabel: ph.phaseLabel,
   };
+}
+
+// ===== 逐日阶段序列：给「进场建议」挑历史同阶段样本用 =====
+// 返回轻量记录数组（不含 Set 引用），顺序与 commonDates 一致。
+function phaseTimeline(keyA, keyB) {
+  const out = [];
+  const st = replayState(keyA, keyB, function (d) {
+    out.push({
+      index: d.index, date: d.date, price: d.price,
+      ddPct: d.ddPct, rbPct: d.rbPct,
+      segActive: d.segActive, troughStale: d.troughStale, phase: d.phase,
+    });
+  });
+  return st ? out : [];
 }
 
 window.SMH_BT = {
   runBacktest, calcMetrics, commonDates, computeLiveState,
+  classifyPhase, replayState, phaseTimeline, seriesMap,
   DRAWDOWN_LEVELS, REBOUND_LEVELS, TROUGH_TRIGGER_PCT, PHASE_REBOUND_PCT,
 };

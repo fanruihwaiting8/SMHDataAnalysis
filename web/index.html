@@ -102,6 +102,22 @@
     padding: 1px 5px; font-size: 12px;
   }
   .guide .warn { color: var(--up); font-weight: 600; }
+  /* 进场建议卡片 */
+  .adv-plan { display: flex; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; }
+  .adv-box {
+    flex: 1 1 300px; background: #0d1117; border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 14px;
+  }
+  .adv-box.best { border-color: var(--primary); }
+  .adv-box h3 { margin: 0 0 8px; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+  .adv-box .tag {
+    font-size: 11px; padding: 1px 8px; border-radius: 20px;
+    background: var(--primary); color: #fff; font-weight: 400;
+  }
+  .adv-box .big { font-size: 20px; font-weight: 700; color: var(--accent); }
+  .adv-kv { font-size: 12px; color: var(--muted); line-height: 1.9; }
+  .adv-kv b { color: var(--text); }
+  .adv-sec { font-size: 13px; font-weight: 700; margin: 16px 0 6px; }
 </style>
 </head>
 <body>
@@ -265,11 +281,24 @@
     夏普未扣无风险利率，仅供本工具内部横向比较。SOXL 为美股上市 3 倍半导体 ETF
     （Direxion Daily Semiconductor Bull 3X），跟踪 ICE 半导体指数，与 SMH 持仓口径不完全一致。
   </div>
+
+  <!-- 进场建议（页面最底端） -->
+  <div class="card" id="adviceCard">
+    <h2>进场建议：此刻入场怎么买、什么价位买 <span class="note" id="adviceSub"></span></h2>
+    <div class="note" style="margin-bottom:10px">
+      以当前数据源的<b>最新交易日收盘价</b>为进场价，在上方「补仓/减仓参数」保持不变的前提下，
+      从历史上<b>与当下同阶段</b>（同为创新高 / 高位回调 / 深度回撤探底 / 底部反弹，且回撤或反弹幅度接近）
+      的若干个日期分别起算，逐一回测不同的「初始杠杆端占比」，挑出未来表现最优的配比。
+      价位清单按<b>进场后重新起算</b>的基准给出（进场日即新的峰值基准），
+      与上方「基于历史峰值」的触发价不同，二者不要混用。
+    </div>
+    <div id="adviceBody"></div>
+  </div>
 </div>
 
 <script src="data.js?v=4"></script>
-<script src="backtest.js?v=7"></script>
-<script src="app.js?v=7"></script>
+<script src="backtest.js?v=8"></script>
+<script src="app.js?v=8"></script>
 <script>
 // 使用指引的展开/折叠状态记忆：首次访问默认展开，用户折叠后下次保持折叠。
 (function () {

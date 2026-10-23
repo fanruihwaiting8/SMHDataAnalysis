@@ -273,6 +273,264 @@
     });
   }
 
+  // ---- 进场建议：假设此刻入场，怎么买 / 什么价位买 ----
+  // 思路：当下的状态（阶段 + 距峰值跌幅 / 距底部涨幅）在历史上反复出现过，
+  // 把那些「长得像今天」的日期当成进场日，各自向后持有固定一段时间做回测；
+  // 补仓/减仓参数沿用上方设定不动，只改「初始杠杆端占比」，看哪个占比未来结果最好。
+  const ADVICE_W_STEP = 5;                        // 初始杠杆端占比搜索步长(%)
+  const ADVICE_SHOW_STEP = 10;                    // 结果表展示步长(%)
+  const ADVICE_HOLD_CANDIDATES = [756, 504, 252]; // 持有期候选(交易日，≈3年/2年/1年)
+  const ADVICE_MIN_SAMPLES = 5;                   // 样本少于此数则只给规则型提示
+  const ADVICE_MAX_SAMPLES = 30;                  // 样本上限(控制计算量)
+  const ADVICE_SAMPLE_GAP = 20;                   // 样本起点最小间隔(交易日)，避免高度重叠
+  const ADVICE_DD_TOL = 5;                        // 下跌阶段：跌幅匹配容差(个百分点)
+  const ADVICE_RB_TOL = 15;                       // 反弹阶段：涨幅匹配容差(个百分点)
+  const ADVICE_SAFE_DD = 55;                      // 均衡方案可接受的中位数最大回撤上限(%)
+
+  function median(arr) {
+    const a = arr.slice().sort((x, y) => x - y), n = a.length;
+    if (!n) return NaN;
+    return n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2;
+  }
+
+  function priceOn(key, date) {
+    const d = window.PRICE_DATA[key];
+    if (!d) return null;
+    const i = d.dates.indexOf(date);
+    return i < 0 ? null : d.closes[i];
+  }
+
+  // 从历史逐日阶段序列里挑「与当下同阶段、幅度接近」且后面还有足够行情的进场日
+  function pickSamples(tl, st, holdDays) {
+    const useDd = st.troughStale;  // 底部属上一轮时按距峰值跌幅匹配，否则按距底部涨幅匹配
+    const cand = [];
+    for (let i = 0; i < tl.length - holdDays; i++) {
+      const d = tl[i];
+      if (d.phase !== st.phase) continue;
+      if (useDd) { if (Math.abs(d.ddPct - st.ddPct) > ADVICE_DD_TOL) continue; }
+      else if (Math.abs(d.rbPct - st.rbPct) > ADVICE_RB_TOL) continue;
+      const prev = cand[cand.length - 1];
+      if (prev && d.index - prev.index < ADVICE_SAMPLE_GAP) continue;
+      cand.push({ index: d.index, start: d.date, end: tl[i + holdDays].date });
+    }
+    if (cand.length <= ADVICE_MAX_SAMPLES) return cand;
+    // 样本过多时沿时间轴均匀抽样，保证覆盖不同年代而不是只压在某几年
+    const out = [], step = (cand.length - 1) / (ADVICE_MAX_SAMPLES - 1);
+    for (let k = 0; k < ADVICE_MAX_SAMPLES; k++) out.push(cand[Math.round(k * step)]);
+    return out;
+  }
+
+  // 固定一个初始杠杆端占比 w(%)，在所有样本上回测并聚合统计
+  function evalWeight(src, dd, rb, samples, w, total) {
+    const capB = total * w / 100, capA = total - capB;
+    const mults = [], dds = [];
+    let wins = 0, used = 0;
+    for (const s of samples) {
+      let r;
+      try {
+        r = BT.runBacktest({
+          keyA: src.a, keyB: src.b, capA, capB,
+          drawdowns: dd, rebounds: rb, startDate: s.start, endDate: s.end,
+        });
+      } catch (e) { continue; }
+      const m = BT.calcMetrics(r.equityDates, r.equityStrategy);
+      if (!m) continue;
+      used += 1;
+      mults.push(r.finalTotal / total);
+      dds.push(Math.abs(m.maxDD) * 100);
+      if (r.finalTotal >= r.equityHoldA[r.equityHoldA.length - 1]) wins += 1;
+    }
+    if (!used) return null;
+    return {
+      w, n: used,
+      medMult: median(mults),
+      worstMult: Math.min.apply(null, mults),
+      bestMult: Math.max.apply(null, mults),
+      medDD: median(dds),
+      winRate: wins / used,
+    };
+  }
+
+  // 进场后的价位清单：补仓触发价按「进场价即新峰值基准」重新起算
+  function renderAdvicePrices(src, st, dd, rb, pxA) {
+    const ddLv = DD.filter((lv) => (dd[lv] || 0) > 0);
+    const rbLv = RB.filter((lv) => (rb[lv] || 0) > 0);
+
+    let h = '<div class="adv-sec">什么价位买：进场后的补仓触发价</div>';
+    h += '<div class="note" style="margin-bottom:8px">'
+      + `进场当天即把 ${src.na} 进场价 <b>${fmtPrice(pxA)}</b> 记为新的峰值基准`
+      + "（历史峰值和此前已用掉的档位都不再影响你的后续动作），"
+      + "此后每跌到下表价位，就按对应比例把基准端资金换成杠杆端。"
+      + `这与上方「基于历史峰值 ${fmtPrice(st.peak)}」的触发价是两套口径，不要混用。</div>`;
+
+    if (!ddLv.length) {
+      h += '<div class="note">当前补仓参数各档均为 0%，进场后不会触发任何补仓动作。</div>';
+    } else {
+      h += '<table class="cmp-tbl"><thead><tr><th>回撤档</th><th>触发价（跌到）</th>'
+        + "<th>距进场价</th><th>动作</th></tr></thead><tbody>";
+      ddLv.forEach((lv) => {
+        h += `<tr><td>-${lv}%</td><td>${fmtPrice(pxA * (1 - lv / 100))}</td>`
+          + `<td>-${lv}%</td>`
+          + `<td>把基准端当时剩余资金的 <b>${dd[lv]}%</b> 换成 ${src.nb}</td></tr>`;
+      });
+      h += "</tbody></table>";
+    }
+
+    const need = pxA * (1 - BT.TROUGH_TRIGGER_PCT / 100);
+    h += '<div class="adv-sec">什么价位卖：进场后的减仓规则</div>';
+    h += '<div class="note">减仓触发价要等「新的有效底部」出现后才算得出：'
+      + `需先自进场后的最高价回撤超过 ${BT.TROUGH_TRIGGER_PCT.toFixed(0)}%`
+      + `（若进场后一直没创新高，即跌破 <b>${fmtPrice(need)}</b>），`
+      + "该轮最低点才会成为有效底部；随后自该底部每反弹到 "
+      + (rbLv.length
+        ? rbLv.map((lv) => `+${lv}%（换回 ${rb[lv]}%）`).join("、")
+        : "设定的各档位")
+      + `，就把杠杆端资金按比例换回 ${src.na}。`
+      + "底部出现后，上方「减仓触发价」会自动按新底部给出具体价格。</div>";
+    return h;
+  }
+
+  // 单个方案框：初始买法 + 该配比在样本上的表现
+  function advicePlanBox(title, tag, r, src, total, best) {
+    const capB = total * r.w / 100, capA = total - capB;
+    return `<div class="adv-box${best ? " best" : ""}">`
+      + `<h3>${title}${tag ? `<span class="tag">${tag}</span>` : ""}</h3>`
+      + '<div class="adv-kv">'
+      + `杠杆端初始占比 <span class="big">${r.w}%</span><br/>`
+      + `${src.na}（基准端）买入 <b>${fmtMoney(capA)}</b><br/>`
+      + `${src.nb}（杠杆端）买入 <b>${fmtMoney(capB)}</b><br/>`
+      + `样本中位数终值 <b>${r.medMult.toFixed(2)}×</b>`
+      + `（最差 ${r.worstMult.toFixed(2)}× / 最好 ${r.bestMult.toFixed(2)}×）<br/>`
+      + `中位数最大回撤 <b>${r.medDD.toFixed(1)}%</b>`
+      + `　|　跑赢纯持基准 <b>${(r.winRate * 100).toFixed(0)}%</b>`
+      + "</div></div>";
+  }
+
+  function renderAdvicePlans(src, agg, bal, total, holdDays) {
+    let h = '<div class="adv-plan">';
+    if (agg.w === bal.w) {
+      h += advicePlanBox(
+        "推荐配比",
+        `中位数收益最高，且回撤 ≤ ${ADVICE_SAFE_DD}%`,
+        agg, src, total, true);
+    } else {
+      h += advicePlanBox("进取方案", "样本中位数收益最高", agg, src, total, true);
+      h += advicePlanBox(
+        "均衡方案", `中位数最大回撤 ≤ ${ADVICE_SAFE_DD}%`, bal, src, total, false);
+    }
+    h += "</div>";
+    h += '<div class="note" style="margin-bottom:4px">'
+      + `终值倍数 = 持有 ${holdDays} 个交易日后的总资金 ÷ 进场本金；`
+      + "取各样本的中位数，比平均值更不容易被个别极端行情带偏。</div>";
+    return h;
+  }
+
+  function renderAdviceTable(rows, agg, bal) {
+    const same = agg.w === bal.w;
+    const keep = rows.filter((r) => r.w % ADVICE_SHOW_STEP === 0
+      || r.w === agg.w || r.w === bal.w);
+    let h = '<div class="adv-sec">各初始配比在历史同阶段样本上的表现</div>'
+      + '<div class="tbl-wrap"><table class="cmp-tbl"><thead><tr>'
+      + "<th>杠杆端初始占比</th><th>中位数终值</th><th>最差</th><th>最好</th>"
+      + "<th>中位数最大回撤</th><th>跑赢纯持基准</th><th>样本数</th>"
+      + "</tr></thead><tbody>";
+    keep.forEach((r) => {
+      let mark = "";
+      if (same && r.w === agg.w) mark = " ← 推荐";
+      else if (r.w === agg.w) mark = " ← 进取";
+      else if (r.w === bal.w) mark = " ← 均衡";
+      h += `<tr${mark ? ' style="font-weight:700"' : ""}>`
+        + `<td>${r.w}%${mark}</td><td>${r.medMult.toFixed(2)}×</td>`
+        + `<td>${r.worstMult.toFixed(2)}×</td><td>${r.bestMult.toFixed(2)}×</td>`
+        + `<td>${r.medDD.toFixed(1)}%</td><td>${(r.winRate * 100).toFixed(0)}%</td>`
+        + `<td>${r.n}</td></tr>`;
+    });
+    return h + "</tbody></table></div>";
+  }
+
+  // 组装「进场建议」卡片内容
+  function buildAdvice(src, dd, rb, total) {
+    const body = $("adviceBody"), sub = $("adviceSub");
+    const st = BT.computeLiveState(src.a, src.b);
+    if (!st || !(total > 0)) {
+      sub.textContent = "";
+      body.innerHTML = '<div class="note">暂无可用数据或投入资金为 0，无法给出建议。</div>';
+      return;
+    }
+    const pxA = st.latestPrice, pxB = priceOn(src.b, st.latestDate);
+
+    // 1) 找历史上与当下同阶段的进场日；持有期从长到短退让，优先保证样本量
+    const tl = BT.phaseTimeline(src.a, src.b);
+    let holdDays = ADVICE_HOLD_CANDIDATES[0], samples = [];
+    for (const h of ADVICE_HOLD_CANDIDATES) {
+      const s = pickSamples(tl, st, h);
+      if (s.length >= ADVICE_MIN_SAMPLES) { holdDays = h; samples = s; break; }
+      if (s.length > samples.length) { holdDays = h; samples = s; }
+    }
+
+    // 2) 逐个占比在全部样本上回测
+    const rows = [];
+    if (samples.length >= ADVICE_MIN_SAMPLES) {
+      for (let w = 0; w <= 100; w += ADVICE_W_STEP) {
+        const r = evalWeight(src, dd, rb, samples, w, total);
+        if (r) rows.push(r);
+      }
+    }
+
+    const matchTxt = st.troughStale
+      ? `距峰值跌幅 ${st.ddPct.toFixed(2)}% ±${ADVICE_DD_TOL} 个百分点`
+      : `距有效底部涨幅 ${st.rbPct.toFixed(2)}% ±${ADVICE_RB_TOL} 个百分点`;
+    const holdYear = (holdDays / 252).toFixed(0);
+
+    let html = '<div class="adv-kv" style="margin-bottom:12px">'
+      + `进场日：<b>${st.latestDate}</b>（数据源最新交易日）`
+      + `　|　进场价：${src.na} <b>${fmtPrice(pxA)}</b>`
+      + (pxB ? `、${src.nb} <b>${fmtPrice(pxB)}</b>` : "")
+      + `<br/>当前阶段：<b>${st.phaseLabel}</b>（${matchTxt}）`
+      + `　|　可投入总资金：<b>${fmtMoney(total)}</b>`
+      + `<br/>历史同阶段样本：<b>${samples.length}</b> 个进场日`
+      + `，每个样本向后持有 <b>${holdDays}</b> 个交易日（约 ${holdYear} 年）后结算`
+      + "</div>";
+
+    if (rows.length === 0) {
+      sub.textContent = "（历史同阶段样本不足，仅给规则型提示）";
+      html += '<div class="note">当前阶段在历史数据里出现得太少（可匹配样本 '
+        + `${samples.length} 个，少于 ${ADVICE_MIN_SAMPLES} 个），`
+        + "按样本择优会严重过拟合，故不给出具体配比。"
+        + "可退一步按策略本身的逻辑执行：此刻先全额买入基准端，"
+        + "把杠杆端额度留到下方各档补仓价再投入。</div>";
+      html += renderAdvicePrices(src, st, dd, rb, pxA);
+      body.innerHTML = html;
+      return;
+    }
+
+    // 3) 选优：进取 = 中位数终值最高；均衡 = 回撤可接受范围内终值最高
+    const byMult = rows.slice().sort((x, y) => y.medMult - x.medMult);
+    const aggressive = byMult[0];
+    const safePool = rows.filter((r) => r.medDD <= ADVICE_SAFE_DD);
+    const balanced = safePool.length
+      ? safePool.slice().sort((x, y) => y.medMult - x.medMult)[0]
+      : rows.slice().sort((x, y) => x.medDD - y.medDD)[0];
+
+    sub.textContent = `（基于 ${samples.length} 个历史同阶段样本）`;
+    html += renderAdvicePlans(src, aggressive, balanced, total, holdDays);
+    html += renderAdviceTable(rows, aggressive, balanced);
+    html += renderAdvicePrices(src, st, dd, rb, pxA);
+    body.innerHTML = html;
+  }
+
+  function renderEntryAdvice(src, dd, rb, total) {
+    const body = $("adviceBody");
+    if (!body) return;
+    $("adviceSub").textContent = "";
+    body.innerHTML = '<div class="note">正在用历史同阶段样本检验各档配比…</div>';
+    // 计算量较大（样本 × 占比档位次回测），放到下一帧避免阻塞首屏渲染
+    setTimeout(function () {
+      try { buildAdvice(src, dd, rb, total); }
+      catch (e) { body.innerHTML = `<div class="note">建议计算失败：${e.message}</div>`; }
+    }, 0);
+  }
+
   // ---- 主流程 ----
   let lastResult = null;
   function run() {
@@ -300,6 +558,8 @@
     renderChart(res, src);
     renderTrades(res, src);
     renderCompare(capA, capB);
+    // 页面最底端的进场建议：用同一套补仓/减仓参数，只搜索初始配比
+    renderEntryAdvice(src, dd, rb, capA + capB);
   }
 
   // ---- 指标卡 ----
