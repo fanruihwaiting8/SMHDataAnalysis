@@ -227,78 +227,39 @@
     return { wA: remain, wB, fired };
   }
 
-  // 资金投入参数下方的提示：结合「起始日处在历史价格空间的什么位置」与当前补仓档位
-  // （默认即推荐参数），同比折算出建议的初始配比金额。
-  // 基线结论来自多起点网格回测（6 个起点 × 一次性占比 × 基准端占比 × 分批月数，留存
-  // 现金按 4% 计息）：从高位起步时全放基准端最优（策略会在下跌中自动换杠杆，开局持
-  // 杠杆只是白担损耗）；但起始日本身已深度回撤时，该按档位开局就持杠杆。
+  // 两端投入框下方的建议配比：结合「起始日处在历史价格空间的什么位置」与当前补仓档位
+  // （默认即推荐参数），折算出建议的开局金额。
+  // 基线结论来自多起点网格回测：从高位起步时全放基准端最优（策略会在下跌中自动换杠杆，
+  // 开局持杠杆只是白担损耗）；起始日本身已深度回撤时，按已越过的档位开局就持杠杆。
   function renderAllocTip() {
-    const el = $("allocTip");
-    if (!el) return;
-    const src = SOURCES[$("source").value];
-    const capA = +$("capA").value || 0, capB = +$("capB").value || 0;
-    const total = capA + capB;
+    const ha = $("hintA"), hb = $("hintB");
+    if (!ha || !hb) return;
+    const srcKey = $("source").value;
+    const src = SOURCES[srcKey];
+    const total = (+$("capA").value || 0) + (+$("capB").value || 0);
     if (!(total > 0)) {
-      el.innerHTML = "<b>初始配比建议</b><br/>· 请先填写基准端／杠杆端的投入金额（两端之和即总投入）。";
-      el.style.display = ""; return;
+      ha.className = "allocHint dim"; hb.className = "allocHint dim";
+      ha.textContent = "请先填写投入金额"; hb.textContent = "";
+      return;
     }
-    const m = (p) => fmtMoney(Math.round(total * p / 100));
-    const curB = Math.round(capB / total * 100);
     let pos = null;
     try { pos = startPosition(src); } catch (e) { pos = null; }
     let dd = null;
     try { dd = readParams().dd; } catch (e) { dd = null; }
-    if (!dd) dd = recOf($("source").value, dcaOn()).dd;
-
-    let h = `<b>初始配比建议</b>（总投入 <b>${fmtMoney(total)}</b>，已填 ${src.na} `
-      + `${100 - curB}% ／ ${src.nb} ${curB}%）`;
-    if (!pos) {
-      el.innerHTML = h + `<br/>· 起始日位置未知，默认 <b>${src.na} ${m(100)}</b> ／ `
-        + `<b>${src.nb} ${fmtMoney(0)}</b>（100 : 0）。`;
-      el.style.display = ""; return;
-    }
-    const r = pos.rec;
-    const a = allocFromPosition(dd, r.ddPct);
-    const wB = Math.round(a.wB), wA = 100 - wB;
-    h += `<br/>· 起始日 <b>${r.date}</b>：${src.na} 收盘 <b>${fmtPrice(r.price)}</b>，`
-      + `距此前历史峰值 <b class="hi">-${r.ddPct.toFixed(1)}%</b>，`
-      + `高于此前 <b>${pos.pctile.toFixed(0)}%</b> 的交易日，阶段 <b>${phaseName(r)}</b>。`;
-    if (a.fired.length) {
-      h += `<br/>· 该位置已越过补仓档 <b>${a.fired.map((lv) => "-" + lv + "%").join("、")}</b>`
-        + `（档位值 ${a.fired.map((lv) => dd[lv] + "%").join("、")}），`
-        + "而引擎把起始日当天价当成峰值、不会回头触发这些档，所以要把它们折进开局仓位："
-        + `<br/>　→ 建议 <b>${src.na} ${m(wA)}</b> ／ <b class="hi">${src.nb} ${m(wB)}</b>`
-        + `（${wA} : ${wB}），一次性投满、<b>不留现金</b>（深度回撤区留现金的组合在回测各起点全面落后）。`;
-      if (wB >= 80) {
-        h += `<br/>· 注意：${wB}% 放 ${src.nb} 等于<b class="hi">开局近乎满杠杆</b>，`
-          + `回测里它确实是深度回撤起点的最优解，但途中净值波动极大（历史最大回撤约 -73%）；`
-          + `扛不住的话可折中到 <b>${src.na} ${m(30)}</b> ／ <b>${src.nb} ${m(70)}</b>（30 : 70）。`;
-      }
-    } else {
-      h += `<br/>· 该位置尚未越过任何补仓档，开局不必持 ${src.nb}：`
-        + `<br/>　→ 建议 <b>${src.na} ${m(100)}</b> ／ <b>${src.nb} ${fmtMoney(0)}</b>（100 : 0），`
-        + `次选 <b>${src.na} ${m(80)}</b> ／ <b>${src.nb} ${m(20)}</b>（80 : 20）。`;
-      h += (r.ddPct < 8 && pos.pctile >= 90)
-        ? `<br/>· 起始日基本在历史高位：可只先投 <b>${m(50)}</b>（全买 ${src.na}）、余下 `
-          + `<b>${m(50)}</b> 分 12 个月买入 —— 回测中仅「从阶段高点起步」这样占优。`
-        : "<br/>· 该位置一次性投满优于分批：留现金分 12/24/36 个月买入在回测各起点均落后。";
-    }
-    h += "<br/>· 加仓的新钱请走「每月定投」；从这笔总额里切出来留现金只是现金拖累，不增益。";
-    el.innerHTML = h;
-    el.style.display = "";
+    if (!dd) dd = recOf(srcKey, dcaOn()).dd;
+    const wB = pos ? Math.round(allocFromPosition(dd, pos.rec.ddPct).wB) : 0;
+    const wA = 100 - wB;
+    const m = (p) => fmtMoney(Math.round(total * p / 100));
+    ha.className = "allocHint"; hb.className = "allocHint";
+    ha.textContent = `建议 ${m(wA)}（${wA}%）`;
+    hb.textContent = `建议 ${m(wB)}（${wB}%）`;
   }
-  // 只在提示已经展示过（用户点过「初始配比推荐」）时才同步刷新，避免未点按钮就自动弹出
+  // 只在建议已经展示过（用户点过「初始配比推荐」）时才同步刷新，避免未点按钮就自动出现
   function refreshAllocTip() {
-    const el = $("allocTip");
-    if (el && el.style.display !== "none" && el.innerHTML) renderAllocTip();
+    const ha = $("hintA");
+    if (ha && ha.textContent) renderAllocTip();
   }
-  function phaseName(r) {    if (r.phaseLabel) return r.phaseLabel;
-    const map = {
-      peak: "创新高", pullback: "高位回调",
-      bottoming: "深度回撤探底", rebound: "底部反弹",
-    };
-    return map[r.phase] || "未知";
-  }
+
 
   // 定投勾选后，在参数区下方列出「一次性投入推荐」与「定投推荐」的档位对比，
   // 差异档位高亮，方便直接看出定投条件下该怎么调加减仓比例。
