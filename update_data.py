@@ -4,7 +4,7 @@
 统一数据更新模块 —— 一次性刷新 Input/ 下四个标的的全量历史 CSV。
 
 数据源：
-  - QQQ/TQQQ/SMH3/USD：FT markets 历史价格接口（网页方式，分年调用）。
+  - QQQ/TQQQ/SOXL/USD：FT markets 历史价格接口（网页方式，分年调用）。
     https://markets.ft.com/data/equities/ajax/get-historical-prices
   - SMH：Nasdaq 官方 api（build_smh_nasdaq.py）。
     FT 数据库只收录欧洲 UCITS 版 SMH（SMH:LSE，2021 起、约 29 量级净值），
@@ -16,7 +16,7 @@
   QQQ  238029     2010-02-11
   TQQQ 22950261   2010-02-11
   SMH  (Nasdaq官方api，非FT)  ~2016-08  美股原生 VanEck Semiconductor ETF
-  SMH3 695808495  2021-12-14
+  SOXL 23333004   2010-03-11  （Direxion Daily Semiconductor Bull 3X Shares，3倍半导体）
   USD  6646165    2007-01-30  （ProShares Ultra Semiconductors，2倍半导体指数）
 
 落盘表头：Date,Open,High,Low,Close,AdjClose,ChangePct,Volume
@@ -55,7 +55,7 @@ TARGETS = {
     "QQQ":  ("238029",    date(2010, 2, 11), 2010, "QQQ_full_history.csv"),
     "TQQQ": ("22950261",  date(2010, 2, 11), 2010, "TQQQ_full_history.csv"),
     "SMH":  ("__NASDAQ__", date(2016, 8, 3), 2016, "SMH_full_history.csv"),
-    "SMH3": ("695808495", date(2021, 12, 14), 2021, "SMH3_full_history.csv"),
+    "SOXL": ("23333004",  date(2010, 3, 11), 2010, "SOXL_full_history.csv"),
     "USD":  ("6646165",   date(2007, 1, 30), 2007, "USD_full_history.csv"),
 }
 

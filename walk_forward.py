@@ -28,8 +28,8 @@ import itertools
 import backtest as bt
 
 GROUPS = {
-    "smh": ("Input/SMH_full_history.csv", "Input/SMH3_full_history.csv",
-            "SMH", "SMH3"),
+    "smh": ("Input/SMH_full_history.csv", "Input/SOXL_full_history.csv",
+            "SMH", "SOXL"),
     "usd": ("Input/SMH_full_history.csv", "Input/USD_full_history.csv",
             "SMH", "USD"),
     "qqq": ("Input/QQQ_full_history.csv", "Input/TQQQ_full_history.csv",

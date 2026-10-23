@@ -6,9 +6,9 @@ SMH 数据分析助手 - GUI 入口
 功能：
   - 提供策略参数输入表单：
       · SMH 投入资金（纯数字）
-      · SMH3 投入资金（纯数字）
+      · SOXL 投入资金（纯数字）
       ·SMH 回撤 -15% / -25% / -35% / -45% / -50% 时，
-        SMH 卖出补仓至 SMH3 的百分比（纯数字，无需 % 号）
+        SMH 卖出补仓至 SOXL 的百分比（纯数字，无需 % 号）
   - 校验输入、保存/恢复上次输入
   - 汇总参数并调用分析逻辑（见 analysis.py）
 """
@@ -53,13 +53,14 @@ PRIMARY_HOVER = "#1A5FCC"
 # 回撤档位（用于动态生成补仓百分比输入框）
 DRAWDOWN_LEVELS = [15, 25, 35, 45, 50]
 
-# 从底部反弹（上涨）档位（用于动态生成 卖出 SMH3 减仓百分比输入框）
+# 从底部反弹（上涨）档位（用于动态生成 卖出杠杆端减仓百分比输入框）
 REBOUND_LEVELS = [50, 100, 200]
 
 # 回测优化得到的推荐比例（虚化显示在输入框右侧，供参考）
-# SMH/SMH3 最近 10 年窗口收益最大化：回撤 -35% 把 SMH 全换 SMH3；
-# 反弹 +200% 把 SMH3 全换回 SMH（详见 optimize_group_10y.py smh）
-RECOMMEND_DRAWDOWNS = {15: 0, 25: 0, 35: 100, 45: 0, 50: 0}
+# SMH/SOXL 最近 10 年窗口收益最大化：回撤 -25% 换 35% 到 SOXL，
+# 再跌到 -35% 把剩余 SMH 全换；反弹 +200% 把 SOXL 全换回 SMH
+# （详见 optimize_group_10y.py smh）
+RECOMMEND_DRAWDOWNS = {15: 0, 25: 35, 35: 100, 45: 0, 50: 0}
 # 减仓：反弹 +50/+100/+200% 对应 0/0/100%
 RECOMMEND_REBOUNDS = {50: 0, 100: 0, 200: 100}
 # 反弹基准点（trough）刷新阈值：回撤达到该百分比时锁定反弹最低点，默认 25%
@@ -70,17 +71,17 @@ DEFAULT_RESET_THRESHOLD = 25.0
 # GUI 顶部下拉切换数据源时，CSV 路径、界面标签、推荐值均按此表动态取值。
 DATA_SOURCES = {
     "SMH": {
-        "label": "SMH / SMH3（半导体）",
+        "label": "SMH / SOXL（半导体·3倍）",
         "csv_a": "SMH_full_history.csv",
-        "csv_b": "SMH3_full_history.csv",
+        "csv_b": "SOXL_full_history.csv",
         "name_a": "SMH",
-        "name_b": "SMH3",
-        # 最近 10 年窗口（受 SMH3 数据所限实为 2021-12~2026-10 约 4.8 年）
-        # 网格搜索收益最大化档位，由 optimize_group_10y.py smh 得出：
-        # 策略末值≈193万，远超全程SMH3(18万)/50-50(18万)/全程SMH(17万)。
-        # 补仓：SMH 回撤 -35% 把全部 SMH 换成 SMH3；
-        # 减仓：SMH 自有效底部反弹 +200% 时把 SMH3 全换回 SMH。
-        "recommend_dd": {15: 0, 25: 0, 35: 100, 45: 0, 50: 0},
+        "name_b": "SOXL",
+        # 最近 10 年窗口（2016-10~2026-10 共 2513 日）网格搜索收益最大化档位，
+        # 由 optimize_group_10y.py smh 得出：策略末值≈1924万，
+        # 远超全程SOXL(140万)/50-50(103万)/全程SMH(66万)。
+        # 补仓：SMH 回撤 -25% 换 35% 到 SOXL，再跌到 -35% 把剩余 SMH 全换；
+        # 减仓：SMH 自有效底部反弹 +200% 时把 SOXL 全换回 SMH。
+        "recommend_dd": {15: 0, 25: 35, 35: 100, 45: 0, 50: 0},
         "recommend_rb": {50: 0, 100: 0, 200: 100},
         "reset_threshold": 25.0,
     },
@@ -170,7 +171,7 @@ class SMHApp:
         self.var_reset_threshold = tk.StringVar(
             value=str(int(DEFAULT_RESET_THRESHOLD)))
 
-        # 默认买入日期 = 日期交集首日（SMH3 成立日）
+        # 默认买入日期 = 日期交集首日（两标的共同起点）
         self.default_start_date = self._compute_default_start_date()
         self.var_buy_date = tk.StringVar(value=self.default_start_date)
         # 年/月/日三个下拉框对应的变量
@@ -190,7 +191,7 @@ class SMHApp:
         self.var_out_smh = tk.StringVar(value="—")
         self.var_out_smh3 = tk.StringVar(value="—")
         self.var_out_total = tk.StringVar(value="—")
-        # 两个“假设收益”对照：全程只买 SMH / 只买 SMH3，不做任何补仓减仓
+        # 两个“假设收益”对照：全程只买基准端 / 只买杠杆端，不做任何补仓减仓
         self.var_out_hold_smh = tk.StringVar(value="—")
         self.var_out_hold_smh3 = tk.StringVar(value="—")
 
@@ -232,7 +233,7 @@ class SMHApp:
         return self._ds()["name_a"]
 
     def _name_b(self) -> str:
-        """当前数据源杠杆标的显示名（如 SMH3 / TQQQ）。"""
+        """当前数据源杠杆标的显示名（如 SOXL / TQQQ）。"""
         return self._ds()["name_b"]
 
     @staticmethod
@@ -547,7 +548,7 @@ class SMHApp:
             messagebox.showerror("对比看板打开失败", str(e))
 
     def update_data(self):
-        """点击后按源数据获取方式刷新四标的（QQQ/TQQQ/SMH/SMH3）最新 CSV 到 Input。"""
+        """点击后按源数据获取方式刷新五标的（QQQ/TQQQ/SMH/SOXL/USD）最新 CSV 到 Input。"""
         win = tk.Toplevel(self.root)
         win.title("更新数据")
         win.geometry("560x420")
@@ -1052,7 +1053,7 @@ class SMHApp:
     def _draw_equity_chart(self, result: dict):
         """在下方图表区绘制净值曲线对比图。
 
-        三条曲线：策略 / 纯持SMH / 纯持SMH3；
+        三条曲线：策略 / 纯持基准端 / 纯持杠杆端；
         补仓用红色上三角、减仓用绿色下三角标记；纵轴对数刻度。
         """
         from datetime import datetime

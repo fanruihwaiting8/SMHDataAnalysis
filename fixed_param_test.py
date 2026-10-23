@@ -16,9 +16,10 @@
   如果一组在最早期定下的参数，样本外还能稳定跑赢无脑持有杠杆端，
   才说明择时规则真有可执行的 Alpha；若样本外跑输，则高收益只是杠杆 Beta。
 
-只测两组（排除样本过少的 SMH/SMH3）：
+三组可测（SMH/SOXL 换用 SOXL 后样本已补足到约 10 年）：
   qqq -> QQQ(1倍) / TQQQ(3倍纳指)
   usd -> SMH(1倍) / USD(2倍半导体)
+  smh -> SMH(1倍) / SOXL(3倍半导体)
 
 用法（必须用项目 .venv）：
   cd my-project/APP/SMHDataAnalysisBot
@@ -31,10 +32,11 @@ import datetime as _dt
 import backtest as bt
 import walk_forward as wf
 
-# 仅保留两组，排除 SMH/SMH3（样本太少）
+# 三组：SMH/SOXL 换标的后样本约 10 年，已可参与样本外检验
 GROUPS = {
     "usd": wf.GROUPS["usd"],
     "qqq": wf.GROUPS["qqq"],
+    "smh": wf.GROUPS["smh"],
 }
 
 
@@ -49,7 +51,7 @@ def main():
     key = (sys.argv[1] if len(sys.argv) > 1 else "qqq").lower()
     train_y = int(sys.argv[2]) if len(sys.argv) > 2 else 3
     if key not in GROUPS:
-        print(f"未知分组 {key}，可选 {list(GROUPS)}（已排除 smh/SMH3）")
+        print(f"未知分组 {key}，可选 {list(GROUPS)}")
         sys.exit(1)
 
     csv_a, csv_b, na, nb_ = GROUPS[key]

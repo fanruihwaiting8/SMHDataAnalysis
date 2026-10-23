@@ -3,7 +3,7 @@
 """
 构建 SMH (VanEck Semiconductor UCITS ETF, 非杠杆) 全量历史行情。
 
-与 SMH3 (3x 杠杆) 采用相同的数据抓取方式和存储格式，周期一致。
+与杠杆端 SOXL (3x 杠杆) 采用相同的存储格式。
 数据源：FT markets 历史价格接口（网页方式）。
   https://markets.ft.com/data/equities/ajax/get-historical-prices
   一次限一年，需分年调用。SMH:LSE 原生 USD 计价，无需汇率换算。
@@ -35,7 +35,7 @@ BASE = "https://markets.ft.com/data/equities/ajax/get-historical-prices"
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                    "..", "..", "..", "Input", "SMH_full_history.csv")
 
-# 分年区间（与 SMH3 保持一致）
+# 分年区间
 YEAR_RANGES = [
     ("2021/12/01", "2022/11/30"),
     ("2022/12/01", "2023/11/30"),
@@ -109,7 +109,7 @@ def main():
         time.sleep(1.5)
 
     ordered = sorted(all_rows.values(), key=lambda x: x[0])
-    # 起点与 SMH3 一致（成立首日 2021-12-10）
+    # 旧版起点（LSE 上市 SMH 首日 2021-12-10）；现主流程由 update_data.py 抓 Nasdaq
     start_day = datetime(2021, 12, 10).date()
     ordered = [r for r in ordered if r[0] >= start_day]
 

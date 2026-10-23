@@ -4,7 +4,7 @@
 基于主界面输入的本金与「同一时间区间」，对 SMH 组、QQQ 组、USD 组分别跑
 补仓减仓策略回测，得到 9 条“资金走势”曲线，每条独立可勾选叠加对比：
 
-  SMH 组：全买 SMH / 动态策略 / 全买 SMH3
+  SMH 组：全买 SMH / 动态策略 / 全买 SOXL
   QQQ 组：全买 QQQ / 动态策略 / 全买 TQQQ
   USD 组：全买 SMH / 动态策略 / 全买 USD（SMH=1倍基准端，USD=2倍杠杆端）
 
@@ -26,7 +26,7 @@ INPUT_DIR = os.path.join(BASE_DIR, "Input")
 
 # 三组回测配置：组 key -> (基准CSV, 杠杆CSV, 基准名, 杠杆名)
 GROUPS = {
-    "SMH": ("SMH_full_history.csv", "SMH3_full_history.csv", "SMH", "SMH3"),
+    "SMH": ("SMH_full_history.csv", "SOXL_full_history.csv", "SMH", "SOXL"),
     "QQQ": ("QQQ_full_history.csv", "TQQQ_full_history.csv", "QQQ", "TQQQ"),
     "USD": ("SMH_full_history.csv", "USD_full_history.csv", "SMH", "USD"),
 }
@@ -35,7 +35,7 @@ GROUPS = {
 CURVES = [
     ("SMH_hold_a",  "全买 SMH",      "SMH", "equity_hold_smh",  "#d62728"),
     ("SMH_strat",   "SMH 动态策略",  "SMH", "equity_strategy",  "#8b0000"),
-    ("SMH_hold_b",  "全买 SMH3",     "SMH", "equity_hold_smh3", "#ff7f0e"),
+    ("SMH_hold_b",  "全买 SOXL",     "SMH", "equity_hold_smh3", "#ff7f0e"),
     ("QQQ_hold_a",  "全买 QQQ",      "QQQ", "equity_hold_smh",  "#1f77b4"),
     ("QQQ_strat",   "QQQ 动态策略",  "QQQ", "equity_strategy",  "#0b3d91"),
     ("QQQ_hold_b",  "全买 TQQQ",     "QQQ", "equity_hold_smh3", "#2ca02c"),
@@ -75,11 +75,11 @@ def _csv_first_date(name: str):
 def common_earliest_date():
     """五标的都存在数据的最早日 = 各首日中的最大值。
 
-    USD 从 2007 起、SMH 从 2021-12-10 起，均早于 SMH3(2021-12-14)，
-    故实际公共起点仍由 SMH3 决定，加入 USD 不改变结果。
+    USD 从 2007 起、SOXL 从 2010-03 起，均早于 SMH（Nasdaq 接口仅回溯 10 年，
+    约 2016-08 起），故实际公共起点由 SMH 决定。
     """
     files = ["QQQ_full_history.csv", "TQQQ_full_history.csv",
-             "SMH_full_history.csv", "SMH3_full_history.csv",
+             "SMH_full_history.csv", "SOXL_full_history.csv",
              "USD_full_history.csv"]
     firsts = [d for d in (_csv_first_date(n) for n in files) if d]
     return max(firsts) if firsts else None

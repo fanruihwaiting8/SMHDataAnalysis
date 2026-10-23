@@ -7,7 +7,7 @@
 不同数据源分别求最优补仓/减仓档位，用作 GUI 推荐参数。
 
 内置分组（与 main.py 的 DATA_SOURCES 对齐）：
-  · smh : SMH(1倍基准)  / SMH3(半导体杠杆)
+  · smh : SMH(1倍基准)  / SOXL(半导体 3 倍杠杆)
   · usd : SMH(1倍基准)  / USD (半导体 2 倍)
   · qqq : QQQ(1倍基准)  / TQQQ(纳指 3 倍)
 
@@ -25,8 +25,8 @@ import backtest as bt
 
 GROUPS = {
     "smh": {"csv_a": "Input/SMH_full_history.csv",
-            "csv_b": "Input/SMH3_full_history.csv",
-            "name_a": "SMH", "name_b": "SMH3"},
+            "csv_b": "Input/SOXL_full_history.csv",
+            "name_a": "SMH", "name_b": "SOXL"},
     "usd": {"csv_a": "Input/SMH_full_history.csv",
             "csv_b": "Input/USD_full_history.csv",
             "name_a": "SMH", "name_b": "USD"},

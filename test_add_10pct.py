@@ -25,8 +25,8 @@ BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Input")
 GROUPS = {
     "SMH": {
         "csv_a": "SMH_full_history.csv",
-        "csv_b": "SMH3_full_history.csv",
-        "name_a": "SMH", "name_b": "SMH3",
+        "csv_b": "SOXL_full_history.csv",
+        "name_a": "SMH", "name_b": "SOXL",
         "dd": {15: 0, 25: 0, 35: 100, 45: 0, 50: 0},
         "rb": {50: 0, 100: 0, 200: 100},
     },

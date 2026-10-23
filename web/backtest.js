@@ -1,4 +1,4 @@
-// SMH / SMH3 补仓减仓策略回测引擎（由 backtest.py 逐行移植为纯前端 JS）
+// SMH / SOXL 补仓减仓策略回测引擎（由 backtest.py 逐行移植为纯前端 JS）
 // 规则与 Python 版严格一致，见原文件 docstring。
 
 const DRAWDOWN_LEVELS = [15, 25, 35, 45, 50];

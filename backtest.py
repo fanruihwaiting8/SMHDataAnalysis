@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SMH / SMH3 补仓减仓策略回测引擎
+SMH / SOXL 补仓减仓策略回测引擎
 
 规则（与用户确认）：
-  · 起点：SMH3 成立日（两份 CSV 日期交集的首日）。用投入资金按当日
-    收盘价买入 SMH、SMH3 份额。
+  · 起点：两份 CSV 日期交集的首日。用投入资金按当日
+    收盘价买入 SMH、SOXL 份额。
   · 逐日遍历（按日期升序，取两 CSV 的日期交集）。两个仓位市值随各自
     收盘价动态变化。
   · 回撤点定义：当前价相对“最近一次历史新高 peak”的跌幅，
     回撤% = (peak - 当前价) / peak * 100。
   · 回撤补仓：SMH 现价相对 peak 回撤达 -X%，且该档本轮未触发，
-    则卖出当前 SMH 市值的 drawdowns[X]%，资金全部转买 SMH3。
+    则卖出当前 SMH 市值的 drawdowns[X]%，资金全部转买 SOXL。
       档位：DRAWDOWN_LEVELS = [15, 25, 35, 45, 50]
   · 反弹点定义（有效底部 active_trough）：初始为建仓日价格——若买入点恰在
     低位，此后即使从未触发回撤补仓，只要相对建仓价上涨达标也应减仓。
@@ -23,12 +23,12 @@ SMH / SMH3 补仓减仓策略回测引擎
     未达 25% 回撤的微小回调不构成新底部；创新高后若回撤未达 25% 则不产生新底部，
     既有 active_trough 保持不变，反弹涨幅继续相对它累计。
   · 反弹减仓：SMH 现价相对 active_trough 上涨达 +Y%，且该档未触发，则卖出当前
-    SMH3 市值的 rebounds[Y]%，资金全部转买 SMH。
+    SOXL 市值的 rebounds[Y]%，资金全部转买 SMH。
     反弹% = (当前价 - active_trough) / active_trough * 100。创新高不清空底部，
     反弹涨幅持续累计，直到出现新的（回撤≥25%的）底部段并跌出更低价才重算。
       档位：REBOUND_LEVELS = [50, 100, 200]
   · 重置：SMH 创新高时 peak 上移、回撤档清空、结束本底部段跟踪；有效底部保留。
-  · 资金只在 SMH ↔ SMH3 间转换，无额外现金。
+  · 资金只在 SMH ↔ SOXL 间转换，无额外现金。
   · 输出：截止最新一日两仓位市值及总资金。
 """
 import os
@@ -66,10 +66,10 @@ def get_common_dates(smh_csv: str, smh3_csv: str) -> list:
 
 
 def get_default_start_date(smh_csv: str, smh3_csv: str) -> str:
-    """默认起点：两份 CSV 日期交集的首日（即 SMH3 成立日）。"""
+    """默认起点：两份 CSV 日期交集的首日。"""
     common = get_common_dates(smh_csv, smh3_csv)
     if not common:
-        raise ValueError("SMH 与 SMH3 的历史数据没有共同交易日")
+        raise ValueError("基准端与杠杆端的历史数据没有共同交易日")
     return common[0]
 
 
@@ -79,14 +79,14 @@ def run_backtest(smh_capital: float, smh3_capital: float,
                  start_date: str = None,
                  end_date: str = None,
                  reset_threshold: float = 25.0,
-                 name_a: str = "SMH", name_b: str = "SMH3") -> dict:
+                 name_a: str = "SMH", name_b: str = "SOXL") -> dict:
     """
     执行回测。
 
     参数：
       smh_capital / smh3_capital: 初始投入资金
       drawdowns: {15: pct, 25: pct, ...} 各回撤档补仓百分比（卖 SMH 的比例）
-      rebounds:  {50: pct, 100: pct, 200: pct} 各反弹档减仓百分比（卖 SMH3 的比例）
+      rebounds:  {50: pct, 100: pct, 200: pct} 各反弹档减仓百分比（卖 SOXL 的比例）
       smh_csv / smh3_csv: 两份历史 CSV 路径
       start_date: 初始资金买入的时间节点（YYYY-MM-DD）。为空则用日期交集
                   首日；若该日非交易日，则取其之后最近的交易日。
@@ -94,9 +94,9 @@ def run_backtest(smh_capital: float, smh3_capital: float,
                   非交易日，则取其之前最近的交易日。
       reset_threshold: 已弃用（保留参数仅为兼容旧调用签名，不再影响计算）。
                   反弹点现为“最近一次回撤补仓所在那一段的最低点（有效底部）”。
-      name_a / name_b: 两个标的的显示名（仅影响交易明细文案），默认 SMH / SMH3。
+      name_a / name_b: 两个标的的显示名（仅影响交易明细文案），默认 SMH / SOXL。
                   不同数据源组合（如 SMH/USD、QQQ/TQQQ）须由调用方传入，
-                  否则交易明细会错写成 SMH/SMH3。
+                  否则交易明细会错写成 SMH/SOXL。
 
     返回：
       {
@@ -111,7 +111,7 @@ def run_backtest(smh_capital: float, smh3_capital: float,
     # 取两者日期交集并升序排列
     all_common = sorted(set(smh_series) & set(smh3_series))
     if not all_common:
-        raise ValueError("SMH 与 SMH3 的历史数据没有共同交易日，无法回测")
+        raise ValueError("基准端与杠杆端的历史数据没有共同交易日，无法回测")
 
     # 根据 start_date 截取回测区间
     if start_date:
@@ -173,7 +173,7 @@ def run_backtest(smh_capital: float, smh3_capital: float,
     # equity_5050：50-50 不动（初始各买一半、全程不操作）的每日市值。
     total_capital = smh_capital + smh3_capital
     hold_smh_shares = total_capital / smh_price0     # 全买 SMH 的份额
-    hold_smh3_shares = total_capital / smh3_price0   # 全买 SMH3 的份额
+    hold_smh3_shares = total_capital / smh3_price0   # 全买杠杆端（SOXL）的份额
     fixed_smh_shares = smh_shares                     # 50-50 不动：锁定建仓份额
     fixed_smh3_shares = smh3_shares
     equity_dates = [start_date]
@@ -213,7 +213,7 @@ def run_backtest(smh_capital: float, smh3_capital: float,
         if seg_low is None or smh_price < seg_low:
             seg_low = smh_price
 
-        # ===== 回撤补仓：卖 SMH 买 SMH3 =====
+        # ===== 回撤补仓：卖 SMH 买 SOXL =====
         # 回撤幅度（相对 peak，正数）
         dd_pct = (peak - smh_price) / peak * 100.0
         for lv in DRAWDOWN_LEVELS:
@@ -260,7 +260,7 @@ def run_backtest(smh_capital: float, smh3_capital: float,
                 troughs[-1] = (
                     date, active_trough, "回撤≥25%区间最低点（反弹点）")
 
-        # ===== 反弹减仓：卖 SMH3 买 SMH =====
+        # ===== 反弹减仓：卖 SOXL 买 SMH =====
         # 有效底部 active_trough 初始为建仓价，此后每当某段回撤达 25% 就刷新为该段
         # 区间最低价（无论比以前高低）。反弹幅度相对当前有效底部累计计算：即使从未回撤
         # 到 25%（买在低点后一路上涨），只要相对建仓价上涨达标也会减仓；创新高不会清空
@@ -292,7 +292,7 @@ def run_backtest(smh_capital: float, smh3_capital: float,
     final_smh = smh_shares * smh_series[end_date]
     final_smh3 = smh3_shares * smh3_series[end_date]
 
-    # 两个“假设收益”对照：把 SMH+SMH3 的初始资金合并后，全程只持有单一标的、
+    # 两个“假设收益”对照：把 SMH+SOXL 的初始资金合并后，全程只持有单一标的、
     # 不做任何补仓/减仓操作，到 end_date 的最终市值。
     hold_all_smh = total_capital / smh_price0 * smh_series[end_date]
     hold_all_smh3 = total_capital / smh3_price0 * smh3_series[end_date]

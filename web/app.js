@@ -5,7 +5,7 @@
 
   // 数据源 -> (基准key, 杠杆key, 显示名)
   const SOURCES = {
-    SMH: { a: "SMH", b: "SMH3", na: "SMH", nb: "SMH3" },
+    SMH: { a: "SMH", b: "SOXL", na: "SMH", nb: "SOXL" },
     QQQ: { a: "QQQ", b: "TQQQ", na: "QQQ", nb: "TQQQ" },
     USD: { a: "SMH", b: "USD", na: "SMH", nb: "USD" },
   };
@@ -13,14 +13,14 @@
   // 与 Python 脚本 optimize_group_10y.py / optimize_qqq_10y.py 及 main.py 的
   // DATA_SOURCES 推荐值完全一致）。
   // 默认 REC_DD/REC_RB 用 SMH 口径（页面初始数据源即 SMH）。
-  const REC_DD = { 15: 0, 25: 0, 35: 100, 45: 0, 50: 0 };
+  const REC_DD = { 15: 0, 25: 35, 35: 100, 45: 0, 50: 0 };
   const REC_RB = { 50: 0, 100: 0, 200: 100 };
   // 按数据源区分的推荐参数（未列出的源回退到上面的 REC_DD/REC_RB）
   const REC_BY_SOURCE = {
-    // SMH/SMH3（SMH3 数据 2021-12 起，“10 年”实为约 4.8 年）：
-    // 回撤 -35% 全仓换 SMH3，反弹 +200% 全撤回 SMH。
+    // SMH/SOXL（最近 10 年 2016-10~2026-10，共 2513 日）：
+    // 回撤 -25% 换 35%、-35% 剩余全换 SOXL，反弹 +200% 全撤回 SMH。
     SMH: {
-      dd: { 15: 0, 25: 0, 35: 100, 45: 0, 50: 0 },
+      dd: { 15: 0, 25: 35, 35: 100, 45: 0, 50: 0 },
       rb: { 50: 0, 100: 0, 200: 100 },
     },
     // QQQ/TQQQ（最近 10 年 2016-10~2026-10）：回撤 -15% 换 60%、-35% 剩余全换 TQQQ，
@@ -294,7 +294,7 @@
 
   // ---- 组合横向对比（可勾选，各组共用动态统一起点） ----
   const CMP_GROUPS = [
-    { key: "SMH", a: "SMH", b: "SMH3", label: "SMH / SMH3" },
+    { key: "SMH", a: "SMH", b: "SOXL", label: "SMH / SOXL" },
     { key: "QQQ", a: "QQQ", b: "TQQQ", label: "QQQ / TQQQ" },
     { key: "USD", a: "SMH", b: "USD", label: "SMH / USD" },
   ];
@@ -306,8 +306,8 @@
   }
 
   // 勾选组合共用的统一起点 = 所涉及全部标的中"最晚的起始日"（它们共同都有数据的最早一天）。
-  // 例如只勾 SMH/USD + QQQ/TQQQ 时，四个标的都远早于 SMH3，起点可追溯到很早；
-  // 一旦勾上含 SMH3 的组，起点才会被顶到 SMH3 上市日。
+  // 例如只勾 QQQ/TQQQ 时起点可追溯到很早；
+  // 一旦勾上含 SMH 的组，起点会被顶到 SMH 数据首日（Nasdaq 接口仅回溯 10 年）。
   function unifiedStart(groups) {
     const keys = new Set();
     groups.forEach((g) => { keys.add(g.a); keys.add(g.b); });

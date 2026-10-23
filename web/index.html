@@ -71,7 +71,7 @@
 <body>
 <div class="wrap">
   <h1>半导体 ETF · 回撤补仓策略回测</h1>
-  <div class="sub">纯浏览器运行，调参后实时重算。SMH=1x 基准端，SMH3/TQQQ/USD=杠杆端。</div>
+  <div class="sub">纯浏览器运行，调参后实时重算。SMH=1x 基准端，SOXL/TQQQ/USD=杠杆端。</div>
   <div style="margin: 0 0 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
     <button class="ghost" id="updateData">🔄 更新最新数据</button>
     <span class="note" id="updateStatus"></span>
@@ -84,7 +84,7 @@
       <div class="field">
         <label>数据源</label>
         <select id="source">
-          <option value="SMH">SMH / SMH3（半导体·3x）</option>
+          <option value="SMH">SMH / SOXL（半导体·3x）</option>
           <option value="QQQ">QQQ / TQQQ（纳指100·3x）</option>
           <option value="USD">SMH / USD（半导体·2x）</option>
         </select>
@@ -149,12 +149,12 @@
   <div class="card">
     <h2>组合横向对比（跟随上方设定的日期区间）</h2>
     <div class="toggle" id="cmpToggle">
-      <span data-k="SMH" class="on">SMH / SMH3</span>
+      <span data-k="SMH" class="on">SMH / SOXL</span>
       <span data-k="QQQ">QQQ / TQQQ</span>
       <span data-k="USD" class="on">SMH / USD</span>
     </div>
     <div class="note" style="margin-bottom:10px">
-      勾选想对比的组合。对比区间跟随上方「起始/截止日期」的设定：各组均在你设定的范围内计算，便于同期对比。若某组的标的上市晚于你设定的起点（如 SMH3），则该组从其上市日起算。未设起点时，才会兜底为勾选组合涉及标的中最晚的上市日。
+      勾选想对比的组合。对比区间跟随上方「起始/截止日期」的设定：各组均在你设定的范围内计算，便于同期对比。若某组的标的数据晚于你设定的起点（如 SMH 仅有近 10 年数据），则该组从其数据首日起算。未设起点时，才会兜底为勾选组合涉及标的中最晚的上市日。
     </div>
     <div class="note" style="margin-bottom:10px" id="cmpNote"></div>
     <div class="tbl-wrap">
@@ -181,8 +181,8 @@
 
   <div class="note">
     ⚠ 本策略放大下跌、不保护下跌：越跌越加杠杆，意味着可能在最低点满仓杠杆。
-    夏普未扣无风险利率，仅供本工具内部横向比较。SMH3 为伦敦上市 ETP，
-    相对「3x SMH」有显著跟踪偏离，调参优先参考口径更干净的 QQQ/TQQQ。
+    夏普未扣无风险利率，仅供本工具内部横向比较。SOXL 为美股上市 3 倍半导体 ETF
+    （Direxion Daily Semiconductor Bull 3X），跟踪 ICE 半导体指数，与 SMH 持仓口径不完全一致。
   </div>
 </div>
 
@@ -211,7 +211,7 @@
   }
 
   btn.addEventListener('click', function () {
-    if (!confirm('将联网抓取 SMH/SMH3/QQQ/TQQQ/USD 的最新行情并重建数据，约需 1 分钟，期间请勿关闭页面。是否继续？')) return;
+    if (!confirm('将联网抓取 SMH/SOXL/QQQ/TQQQ/USD 的最新行情并重建数据，约需 1 分钟，期间请勿关闭页面。是否继续？')) return;
     btn.disabled = true;
     var t0 = Date.now();
     status.textContent = '⏳ 更新中，请稍候（约 1 分钟）…';

@@ -18,7 +18,7 @@
 
 | 组合 | 基准 | 杠杆端 | 说明 |
 | --- | --- | --- | --- |
-| 半导体 | SMH | SMH3 | SMH3 为伦敦上市 3 倍半导体 ETP，数据自 2021-12 起 |
+| 半导体 | SMH | SOXL | SOXL 为 Direxion Daily Semiconductor Bull 3X，美股上市，数据自 2010-03 起 |
 | 纳指 | QQQ | TQQQ | 3 倍纳指，数据口径最干净，推荐优先用于调参 |
 | 半导体·2 倍 | SMH | USD | USD 为 ProShares Ultra Semiconductors，数据自 2007 起 |
 
@@ -61,7 +61,7 @@ macOS 也可用 `./run_smh.sh` 启动（自动处理 Apple Silicon 架构问题�
 
 历史行情通过公开接口抓取，仅用于个人研究：
 
-- QQQ / TQQQ / SMH3 / USD：FT Markets 历史价格接口
+- QQQ / TQQQ / SOXL / USD：FT Markets 历史价格接口
 - SMH：Nasdaq 官方接口（仅覆盖近 10 年）
 
 数据均为原生美元计价，不做汇率换算。各接口口径、复权方式存在差异，数值与官方页面可能有千分之几的偏差。若接口变更导致抓取失败，请自行替换为其他数据源——CSV 格式为 `Date,Open,High,Low,Close,AdjClose,ChangePct,Volume`。
@@ -70,7 +70,7 @@ macOS 也可用 `./run_smh.sh` 启动（自动处理 Apple Silicon 架构问题�
 
 - 回测**不计入**交易手续费、买卖价差、税费与杠杆 ETF 的日内复利损耗（volatility decay），实际收益会显著低于回测值。
 - 本策略**放大下跌、不保护下跌**：越跌越加杠杆，极端情况下会在最低点满杠杆持仓。
-- SMH3 数据仅自 2021-12 起，所谓「十年回测」实际约 4.8 年，样本极少，参数过拟合风险很高。
+- SOXL 数据自 2010-03 起，但 SMH 走 Nasdaq 接口仅能回溯近 10 年，故半导体组实际可回测区间约 10 年（2016-10 起，2513 个交易日），样本量仍有限，参数存在过拟合风险。
 - 夏普比率未扣除无风险利率，仅供工具内部横向比较。
 
 ## 免责声明

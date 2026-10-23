@@ -18,7 +18,7 @@ OUT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.js")
 # key -> csv 文件名
 FILES = {
     "SMH": "SMH_full_history.csv",
-    "SMH3": "SMH3_full_history.csv",
+    "SOXL": "SOXL_full_history.csv",
     "QQQ": "QQQ_full_history.csv",
     "TQQQ": "TQQQ_full_history.csv",
     "USD": "USD_full_history.csv",

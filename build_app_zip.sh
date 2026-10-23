@@ -32,7 +32,7 @@ for f in update_data.py build_smh_nasdaq.py; do
 done
 mkdir -p "$APP/Contents/Resources/Input"
 for f in QQQ_full_history.csv TQQQ_full_history.csv SMH_full_history.csv \
-         SMH3_full_history.csv USD_full_history.csv; do
+         SOXL_full_history.csv USD_full_history.csv; do
   cp "$HERE/Input/$f" "$APP/Contents/Resources/Input/$f"
 done
 

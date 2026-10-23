@@ -4,7 +4,7 @@
 在固定补仓策略下，网格搜索最优减仓比例，使截止今天总资金最大。
 
 固定补仓（drawdowns）：回撤-15%不操作、-25%补20%、-35%补100%（-45/-50%不操作）。
-待优化减仓（rebounds）：SMH反弹 +50%/+100%/+200% 各卖出当时 SMH3 市值的百分比。
+待优化减仓（rebounds）：SMH反弹 +50%/+100%/+200% 各卖出当时 SOXL 市值的百分比。
 
 减仓仅 3 档，组合可控，直接用步长 1% 全网格搜索（101^3≈103万，内联版秒级）。
 """
@@ -12,7 +12,7 @@ import itertools
 import backtest as bt
 
 SMH_CSV = "Input/SMH_full_history.csv"
-SMH3_CSV = "Input/SMH3_full_history.csv"
+SMH3_CSV = "Input/SOXL_full_history.csv"
 SMH_CAP = 20000.0
 SMH3_CAP = 20000.0
 DRAWDOWNS = {15: 0, 25: 20, 35: 100, 45: 0, 50: 0}   # 固定补仓
@@ -106,5 +106,5 @@ c2, v2 = search(fine)
 
 print("\n===== 最终结论（固定补仓下的最优减仓比例）=====")
 for lv, p in zip(RB_LEVELS, c2):
-    print(f"  SMH反弹 +{lv}% -> 卖出当时 SMH3 市值的 {p}% 补入 SMH")
+    print(f"  SMH反弹 +{lv}% -> 卖出当时 SOXL 市值的 {p}% 补入 SMH")
 print(f"截止 {COMMON[-1]} 总资金 = {v2:,.2f}")

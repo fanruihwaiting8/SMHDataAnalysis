@@ -25,7 +25,7 @@ import backtest as bt
 BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Input")
 
 PAIRS = [
-    ("SMH/SMH3", "SMH_full_history.csv", "SMH3_full_history.csv"),
+    ("SMH/SOXL", "SMH_full_history.csv", "SOXL_full_history.csv"),
     ("QQQ/TQQQ", "QQQ_full_history.csv", "TQQQ_full_history.csv"),
     ("SMH/USD", "SMH_full_history.csv", "USD_full_history.csv"),
 ]
