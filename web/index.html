@@ -89,6 +89,14 @@
   .dcaRec table { width: auto; min-width: 420px; }
   .dcaRec th, .dcaRec td { padding: 5px 14px 5px 0; border-bottom: 1px solid var(--border); }
   .dcaRec td.hit { color: var(--accent); font-weight: 700; }
+  /* 资金投入参数下方的初始配比建议提示 */
+  .allocTip {
+    margin: 10px 0 2px; padding: 9px 12px; font-size: 12.5px; line-height: 1.75;
+    color: var(--muted); background: #0d1117;
+    border: 1px dashed var(--border); border-left: 3px solid var(--primary); border-radius: 7px;
+  }
+  .allocTip b { color: #fff; font-weight: 700; }
+  .allocTip b.hi { color: var(--accent); }
   /* 实时状态条：当前价 / 峰值跌幅、底部涨幅 */
   .status {
     font-size: 13px; margin: 0 0 10px; padding: 8px 12px;
@@ -266,6 +274,10 @@
         <input id="endDate" type="hidden" />
       </div>
     </div>
+    <div class="grp row">
+      <button class="ghost" id="allocAdvise" title="按当前数据源、总投入与起始日期在历史价格空间中的位置，推荐开局的基准端/杠杆端配比">💡 初始配比推荐</button>
+    </div>
+    <div class="allocTip" id="allocTip" style="display:none"></div>
 
   <div class="grp">
       <div class="lbl">▼ 回撤补仓：基准端相对峰值回撤达标时，卖出基准端市值的百分比转买杠杆端</div>
@@ -377,7 +389,7 @@
 
 <script src="data.js?v=4"></script>
 <script src="backtest.js?v=9"></script>
-<script src="app.js?v=12"></script>
+<script src="app.js?v=14"></script>
 <script>
 // 使用指引的展开状态记忆：默认收起不干扰上手，用户展开后下次保持展开。
 (function () {
