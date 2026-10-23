@@ -30,6 +30,14 @@ function runBacktest(opts) {
   const {
     keyA, keyB, capA, capB, drawdowns, rebounds,
     startDate = null, endDate = null,
+    // 月度定投：每月第一个交易日注入「起始总资金 × monthlyPct%」的新现金。
+    // 口径（固定且唯一，便于解释与参数优化）：
+    //   · 策略组：注入额全部买入基准端（现实中你每月定投的就是 1 倍 ETF），
+    //     之后是否换成杠杆端完全由回撤档位规则决定，不额外择时；
+    //   · 纯持基准 / 纯持杠杆：注入额分别全买各自标的；
+    //   · 50-50 不动：按初始 capA:capB 比例分摊注入。
+    // 四条曲线的外部现金流完全一致，才能公平对比。
+    monthlyPct = 0,
   } = opts;
 
 const smhSeries = seriesMap(keyA);
@@ -68,20 +76,44 @@ const smhSeries = seriesMap(keyA);
   let segLow = null;
 
   const total = capA + capB;
-  const holdAShares = total / p0a;
-  const holdBShares = total / p0b;
-  const fixedAShares = smhShares, fixedBShares = smh3Shares;
+  let holdAShares = total / p0a;
+  let holdBShares = total / p0b;
+  let fixedAShares = smhShares, fixedBShares = smh3Shares;
+
+  // 定投相关：每期注入额、基准端初始占比（供 50-50 对照分摊）
+  const monthlyCash = total * (monthlyPct || 0) / 100.0;
+  const wA = total > 0 ? capA / total : 0.5;
+  let lastMonth = start.slice(0, 7);
+  let totalInvested = total;
 
   const equityDates = [start];
   const equityStrategy = [smhShares * p0a + smh3Shares * p0b];
   const equityHoldA = [holdAShares * p0a];
   const equityHoldB = [holdBShares * p0b];
   const equity5050 = [fixedAShares * p0a + fixedBShares * p0b];
+  // 外部现金流（与 equityDates 对齐）：首日为初始本金，其后为当日定投注入额。
+  // 有外部注入时净值曲线不能直接当收益看，须配合 calcFlowMetrics 使用。
+  const flows = [total];
   const tradeMarks = [];
 
   for (let i = 1; i < common.length; i++) {
     const date = common[i];
     const pa = smhSeries[date], pb = smh3Series[date];
+
+    // 月度定投：进入新月份的第一个共同交易日注入，按当日收盘价买入
+    let inflow = 0;
+    const ym = date.slice(0, 7);
+    if (monthlyCash > 0 && ym !== lastMonth) {
+      inflow = monthlyCash;
+      lastMonth = ym;
+      totalInvested += inflow;
+      smhShares += inflow / pa;                 // 策略组：全买基准端
+      holdAShares += inflow / pa;
+      holdBShares += inflow / pb;
+      fixedAShares += (inflow * wA) / pa;
+      fixedBShares += (inflow * (1 - wA)) / pb;
+    }
+    flows.push(inflow);
 
     equityDates.push(date);
     equityStrategy.push(smhShares * pa + smh3Shares * pb);
@@ -157,12 +189,13 @@ const smhSeries = seriesMap(keyA);
   return {
     startDate: start, endDate: end,
     finalSmh, finalSmh3, finalTotal: finalSmh + finalSmh3,
-    holdAllSmh: (total / p0a) * pEndA,
-    holdAllSmh3: (total / p0b) * pEndB,
+    holdAllSmh: holdAShares * pEndA,
+    holdAllSmh3: holdBShares * pEndB,
     trades, troughs,
     equityDates, equityStrategy,
     equityHoldA, equityHoldB, equity5050,
     tradeMarks,
+    flows, totalInvested, monthlyPct: monthlyPct || 0, monthlyCash,
   };
 }
 
@@ -205,6 +238,70 @@ function calcMetrics(dates, equity) {
     cagr, maxDD, sharpe,
     maxUnderwaterDays: Math.round(maxUnderwaterDays),
     finalTotal: last,
+  };
+}
+
+// ===== 有外部现金流（月度定投）时的绩效指标 =====
+// 每月注入新现金会把净值曲线抬高，直接套用 calcMetrics 会把「本金变多」
+// 误算成「赚钱」，CAGR/最大回撤都会失真。这里分两套口径：
+//   · TWR 时间加权单位净值：剔除注入影响，用于 CAGR / 最大回撤 / 夏普 / 套牢天数；
+//   · XIRR 资金加权年化：把每笔注入按实际发生日贴现，反映真实年化回报。
+// flows 与 dates/equity 对齐：flows[0] 为初始本金，其后为当日注入额。
+function calcFlowMetrics(dates, equity, flows) {
+  const n = equity.length;
+  if (n < 2) return null;
+  const hasFlow = !!(flows && flows.some((f, i) => i > 0 && f > 0));
+
+  if (!hasFlow) {
+    const m = calcMetrics(dates, equity);
+    if (!m) return null;
+    return Object.assign({}, m, {
+      invested: equity[0], profit: equity[n - 1] - equity[0],
+      xirr: m.cagr, twrCagr: m.cagr, hasFlow: false,
+    });
+  }
+
+  // 单位净值：当日注入按当日收盘价买入，故注入额先并入期初基数
+  const unit = [1];
+  for (let i = 1; i < n; i++) {
+    const base = equity[i - 1] + (flows[i] || 0);
+    unit.push(base > 0 ? unit[i - 1] * (equity[i] / base) : unit[i - 1]);
+  }
+  const mt = calcMetrics(dates, unit);
+  if (!mt) return null;
+
+  const invested = flows.reduce((a, b) => a + (b || 0), 0);
+  const last = equity[n - 1];
+
+  // XIRR：二分求使净现值归零的年化利率
+  const t0 = new Date(dates[0]).getTime();
+  const YEAR = 365.25 * 24 * 3600 * 1000;
+  const yearsOf = (d) => (new Date(d).getTime() - t0) / YEAR;
+  const tEnd = yearsOf(dates[n - 1]);
+  function gap(r) {
+    let v = last / Math.pow(1 + r, tEnd);
+    for (let i = 0; i < n; i++) {
+      const f = flows[i] || 0;
+      if (f > 0) v -= f / Math.pow(1 + r, yearsOf(dates[i]));
+    }
+    return v;
+  }
+  let xirr = NaN;
+  let lo = -0.9999, hi = 10;
+  if (gap(lo) > 0 && gap(hi) < 0) {
+    for (let k = 0; k < 80; k++) {
+      const mid = (lo + hi) / 2;
+      if (gap(mid) > 0) lo = mid; else hi = mid;
+    }
+    xirr = (lo + hi) / 2;
+  }
+
+  return {
+    cagr: mt.cagr, twrCagr: mt.cagr, xirr,
+    maxDD: mt.maxDD, sharpe: mt.sharpe,
+    maxUnderwaterDays: mt.maxUnderwaterDays,
+    finalTotal: last, invested, profit: last - invested,
+    hasFlow: true,
   };
 }
 
@@ -346,7 +443,7 @@ function phaseTimeline(keyA, keyB) {
 }
 
 window.SMH_BT = {
-  runBacktest, calcMetrics, commonDates, computeLiveState,
+  runBacktest, calcMetrics, calcFlowMetrics, commonDates, computeLiveState,
   classifyPhase, replayState, phaseTimeline, seriesMap,
   DRAWDOWN_LEVELS, REBOUND_LEVELS, TROUGH_TRIGGER_PCT, PHASE_REBOUND_PCT,
 };

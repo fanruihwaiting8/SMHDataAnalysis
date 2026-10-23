@@ -37,8 +37,37 @@
     },
   };
 
+  // 每月定投比例（占「基准端+杠杆端」起始资金之和的百分比）。
+  // 勾上页面的「每月定投」后，每月第一个交易日注入 起始资金 × DCA_PCT%，
+  // 注入额全部买入基准端（是否换成杠杆端仍由回撤档位规则决定）。
+  const DCA_PCT = 2;
+  // 定投口径下重新做的网格搜索结果（tools/optimize_dca.js，最近 10 年窗口、
+  // 起始 20000+20000、每月注入 800，目标同样是末日总资金最大化）。
+  // 与一次性投入相比，主要差别是深档（-45%）的价值显著上升：
+  // 持续有新钱流入基准端，深跌时仍有弹药可换，故 -45% 档从 0% 提到 100%。
+  const REC_DCA_BY_SOURCE = {
+    // SMH/SOXL：final 25,284,334（同口径不调仓 1,400,192）
+    SMH: {
+      dd: { 15: 0, 25: 40, 35: 100, 45: 100, 50: 0 },
+      rb: { 50: 0, 100: 0, 200: 100 },
+    },
+    // QQQ/TQQQ：final 2,415,601（同口径不调仓 865,129）；与一次性推荐一致
+    QQQ: {
+      dd: { 15: 60, 25: 0, 35: 100, 45: 0, 50: 0 },
+      rb: { 50: 0, 100: 100, 200: 0 },
+    },
+    // SMH/USD：final 10,999,471（同口径不调仓 2,049,813）
+    USD: {
+      dd: { 15: 0, 25: 55, 35: 100, 45: 100, 50: 0 },
+      rb: { 50: 0, 100: 0, 200: 100 },
+    },
+  };
+
   const $ = (id) => document.getElementById(id);
   const chart = echarts.init($("chart"), "dark");
+  const dcaOn = () => !!($("dca") && $("dca").checked);
+  // 当前生效的每月注入金额（未勾选定投时为 0）
+  function monthlyPctNow() { return dcaOn() ? DCA_PCT : 0; }
 
   // ---- 下拉式日期选择器：年/月/日三段下拉 <-> 隐藏 input(YYYY-MM-DD) 双向同步 ----
   // 用可选交易日集合(setDates)约束：只列出区间内真实存在数据的年/月/日，
@@ -144,10 +173,45 @@
   }
 
   // 把当前数据源的推荐档位填入补仓/减仓输入框（与桌面 GUI 行为一致）
+  // 勾上「每月定投」时改用定投口径重新优化出的推荐参数。
+  function recOf(srcKey, dca) {
+    const table = dca ? REC_DCA_BY_SOURCE : REC_BY_SOURCE;
+    return table[srcKey] || REC_BY_SOURCE[srcKey] || { dd: REC_DD, rb: REC_RB };
+  }
   function fillRecommend() {
-    const rec = REC_BY_SOURCE[$("source").value] || { dd: REC_DD, rb: REC_RB };
+    const rec = recOf($("source").value, dcaOn());
     document.querySelectorAll(".dd").forEach((el) => el.value = rec.dd[+el.dataset.lv]);
     document.querySelectorAll(".rb").forEach((el) => el.value = rec.rb[+el.dataset.lv]);
+  }
+
+  // 定投勾选后，在参数区下方列出「一次性投入推荐」与「定投推荐」的档位对比，
+  // 差异档位高亮，方便直接看出定投条件下该怎么调加减仓比例。
+  function renderDcaRec() {
+    const box = $("dcaRec");
+    if (!box) return;
+    const wrap = $("dcaWrap");
+    if (wrap) wrap.classList.toggle("on", dcaOn());
+    if (!dcaOn()) { box.style.display = "none"; box.innerHTML = ""; return; }
+    const srcKey = $("source").value;
+    const src = SOURCES[srcKey];
+    const one = recOf(srcKey, false), dca = recOf(srcKey, true);
+    const total = (+$("capA").value || 0) + (+$("capB").value || 0);
+    const row = (label, a, b) => {
+      const cls = a === b ? "" : " class=\"hit\"";
+      return `<tr><td>${label}</td><td>${a}%</td><td${cls}>${b}%</td></tr>`;
+    };
+    const rows = DD.map((lv) => row(`▼ 回撤 -${lv}%`, one.dd[lv], dca.dd[lv]))
+      .concat(RB.map((lv) => row(`▲ 反弹 +${lv}%`, one.rb[lv], dca.rb[lv])));
+    box.innerHTML = '<div class="note" style="margin-bottom:8px">'
+      + `已开启每月定投：每月第一个交易日注入起始资金的 <b>${DCA_PCT}%</b>`
+      + (total > 0 ? ` = <b>${fmtMoney(total * DCA_PCT / 100)}</b>/月` : "")
+      + `，全额买入 ${src.na}；是否换成 ${src.nb} 仍由下列回撤档位决定。`
+      + "下表右列是按定投现金流重新做网格搜索（最近 10 年窗口、末日总资金最大化）得到的推荐值，"
+      + "<b>橙色</b>为与一次性投入不同的档位。点「填入推荐参数」即按右列填入。"
+      + '</div><table><thead><tr><th>档位</th><th>一次性投入推荐</th>'
+      + `<th>定投(${DCA_PCT}%/月)推荐</th></tr></thead><tbody>`
+      + rows.join("") + "</tbody></table>";
+    box.style.display = "";
   }
 
   function fmtMoney(v) {
@@ -321,7 +385,9 @@
   }
 
   // 固定一个初始杠杆端占比 w(%)，在所有样本上回测并聚合统计
-  function evalWeight(src, dd, rb, samples, w, total) {
+  // monthlyPct > 0 时样本内也按月注入，倍数口径改为「终值 / 该样本累计投入」，
+  // 否则定投样本的倍数会被陆续投入的新钱稀释，无法横向比较。
+  function evalWeight(src, dd, rb, samples, w, total, monthlyPct) {
     const capB = total * w / 100, capA = total - capB;
     const mults = [], dds = [];
     let wins = 0, used = 0;
@@ -331,12 +397,15 @@
         r = BT.runBacktest({
           keyA: src.a, keyB: src.b, capA, capB,
           drawdowns: dd, rebounds: rb, startDate: s.start, endDate: s.end,
+          monthlyPct: monthlyPct || 0,
         });
       } catch (e) { continue; }
-      const m = BT.calcMetrics(r.equityDates, r.equityStrategy);
+      const m = (monthlyPct > 0)
+        ? BT.calcFlowMetrics(r.equityDates, r.equityStrategy, r.flows)
+        : BT.calcMetrics(r.equityDates, r.equityStrategy);
       if (!m) continue;
       used += 1;
-      mults.push(r.finalTotal / total);
+      mults.push(r.finalTotal / (r.totalInvested || total));
       dds.push(Math.abs(m.maxDD) * 100);
       if (r.finalTotal >= r.equityHoldA[r.equityHoldA.length - 1]) wins += 1;
     }
@@ -496,7 +565,7 @@
   }
 
   // 组装「进场建议」卡片内容
-  function buildAdvice(src, dd, rb, total) {
+  function buildAdvice(src, dd, rb, total, monthlyPct) {
     const body = $("adviceBody"), sub = $("adviceSub");
     const st = BT.computeLiveState(src.a, src.b);
     if (!st || !(total > 0)) {
@@ -519,7 +588,7 @@
     const rows = [];
     if (samples.length >= ADVICE_MIN_SAMPLES) {
       for (let w = 0; w <= 100; w += ADVICE_W_STEP) {
-        const r = evalWeight(src, dd, rb, samples, w, total);
+        const r = evalWeight(src, dd, rb, samples, w, total, monthlyPct);
         if (r) rows.push(r);
       }
     }
@@ -537,6 +606,9 @@
       + (pxB ? `、${src.nb} <b>${fmtPrice(pxB)}</b>` : "")
       + `<br/>当前阶段：<b>${st.phaseLabel}</b>（${matchTxt}）`
       + `　|　可投入总资金：<b>${fmtMoney(total)}</b>`
+      + (monthlyPct > 0
+        ? `（另每月定投 <b>${fmtMoney(total * monthlyPct / 100)}</b> 买入 ${src.na}，下表倍数＝终值 / 累计投入）`
+        : "")
       + `<br/>历史同阶段样本：<b>${samples.length}</b> 个进场日`
       + `，每个样本向后持有 <b>${holdDays}</b> 个交易日（约 ${holdYear} 年）后结算`
       + "</div>";
@@ -569,14 +641,14 @@
     body.innerHTML = html;
   }
 
-  function renderEntryAdvice(src, dd, rb, total) {
+  function renderEntryAdvice(src, dd, rb, total, monthlyPct) {
     const body = $("adviceBody");
     if (!body) return;
     $("adviceSub").textContent = "";
     body.innerHTML = '<div class="note">正在用历史同阶段样本检验各档配比…</div>';
     // 计算量较大（样本 × 占比档位次回测），放到下一帧避免阻塞首屏渲染
     setTimeout(function () {
-      try { buildAdvice(src, dd, rb, total); }
+      try { buildAdvice(src, dd, rb, total, monthlyPct || 0); }
       catch (e) { body.innerHTML = `<div class="note">建议计算失败：${e.message}</div>`; }
     }, 0);
   }
@@ -592,12 +664,14 @@
     const capB = +$("capB").value || 0;
     const startDate = $("startDate").value || null;
     const endDate = $("endDate").value || null;
+    const monthlyPct = monthlyPctNow();
+    renderDcaRec();
 
     let res;
     try {
       res = BT.runBacktest({
         keyA: src.a, keyB: src.b, capA, capB,
-        drawdowns: dd, rebounds: rb, startDate, endDate,
+        drawdowns: dd, rebounds: rb, startDate, endDate, monthlyPct,
       });
     } catch (e) {
       alert("回测失败：" + e.message);
@@ -609,16 +683,34 @@
     renderTrades(res, src);
     renderCompare(capA, capB);
     // 页面最底端的进场建议：用同一套补仓/减仓参数，只搜索初始配比
-    renderEntryAdvice(src, dd, rb, capA + capB);
+    renderEntryAdvice(src, dd, rb, capA + capB, monthlyPct);
   }
 
   // ---- 指标卡 ----
+  // 有月度定投时，净值倍数口径失效（钱是陆续投进去的），必须改用
+  // 资金流指标：CAGR 用 TWR（时间加权，剔除注入节奏影响），另外给出
+  // XIRR（资金加权年化，才是你这笔钱真实的年化收益）与累计投入/净盈亏。
   function renderMetrics(res) {
-    const m = BT.calcMetrics(res.equityDates, res.equityStrategy);
-    const base = BT.calcMetrics(res.equityDates, res.equity5050);
+    const hasFlow = !!(res.flows && res.totalInvested && res.monthlyCash > 0);
+    const m = hasFlow
+      ? BT.calcFlowMetrics(res.equityDates, res.equityStrategy, res.flows)
+      : BT.calcMetrics(res.equityDates, res.equityStrategy);
+    const base = hasFlow
+      ? BT.calcFlowMetrics(res.equityDates, res.equity5050, res.flows)
+      : BT.calcMetrics(res.equityDates, res.equity5050);
     if (!m) return;
     const excess = m.finalTotal - base.finalTotal;
-    const cards = [
+    const cards = hasFlow ? [
+      { k: "最终总资金", v: fmtMoney(m.finalTotal) },
+      { k: "累计投入", v: fmtMoney(m.invested) },
+      { k: "净盈亏", v: (m.profit >= 0 ? "+" : "") + fmtMoney(m.profit), cls: m.profit >= 0 ? "pos" : "neg" },
+      { k: "XIRR 资金加权年化", v: m.xirr === null ? "—" : fmtPct(m.xirr), cls: (m.xirr || 0) >= 0 ? "pos" : "neg" },
+      { k: "TWR 年化", v: fmtPct(m.twrCagr), cls: m.twrCagr >= 0 ? "pos" : "neg" },
+      { k: "最大回撤", v: fmtPct(m.maxDD), cls: "neg" },
+      { k: "夏普(未扣无风险)", v: m.sharpe.toFixed(2) },
+      { k: "最长套牢", v: m.maxUnderwaterDays + " 天" },
+      { k: "vs 50-50不动", v: (excess >= 0 ? "+" : "") + fmtMoney(excess), cls: excess >= 0 ? "pos" : "neg" },
+    ] : [
       { k: "最终总资金", v: fmtMoney(m.finalTotal) },
       { k: "CAGR 年化", v: fmtPct(m.cagr), cls: m.cagr >= 0 ? "pos" : "neg" },
       { k: "最大回撤", v: fmtPct(m.maxDD), cls: "neg" },
@@ -757,6 +849,7 @@
 
   function renderCompare(capA, capB) {
     const { dd, rb } = readParams();
+    const monthlyPct = monthlyPctNow();
     const groups = checkedCmpGroups();
     if (!groups.length) {
       $("cmpBody").innerHTML = `<tr><td colspan="9" class="note">未勾选任何组合</td></tr>`;
@@ -772,6 +865,9 @@
     $("cmpNote").textContent = uStart
       ? `对比区间：${uStart} ~ ${uEnd || "最新"}（按上方设定；某组若上市晚于起点，则从其上市日起算）`
       : `统一起点：${autoStart}（未设起点，由勾选组合涉及标的的最晚上市日兜底）`;
+    if (monthlyPct > 0) {
+      $("cmpNote").textContent += `；已开启每月定投 ${DCA_PCT}%，各组现金流相同，年化列为 XIRR（资金加权）`;
+    }
     const rows = groups.map((g) => {
     // 该组的起点 = max(用户起点, 该组自身最晚上市日)；无用户起点时用兜底起点。
       const gFirst = unifiedStart([g]);
@@ -780,19 +876,25 @@
       try {
         res = BT.runBacktest({
           keyA: g.a, keyB: g.b, capA, capB, drawdowns: dd, rebounds: rb,
-          startDate, endDate: uEnd,
+          startDate, endDate: uEnd, monthlyPct,
         });
       } catch (e) {
         return `<tr><td>${g.label}</td><td colspan="8" class="neg">${e.message}</td></tr>`;
       }
-      const m = BT.calcMetrics(res.equityDates, res.equityStrategy);
-      const base = BT.calcMetrics(res.equityDates, res.equity5050);
+      const hasFlow = monthlyPct > 0;
+      const m = hasFlow
+        ? BT.calcFlowMetrics(res.equityDates, res.equityStrategy, res.flows)
+        : BT.calcMetrics(res.equityDates, res.equityStrategy);
+      const base = hasFlow
+        ? BT.calcFlowMetrics(res.equityDates, res.equity5050, res.flows)
+        : BT.calcMetrics(res.equityDates, res.equity5050);
       const excessCls = m.finalTotal >= base.finalTotal ? "pos" : "neg";
+      const cagrShown = hasFlow ? (m.xirr === null ? m.twrCagr : m.xirr) : m.cagr;
       return `<tr>
         <td>${g.label}</td>
         <td class="note">${res.startDate} ~ ${res.endDate}</td>
         <td class="${excessCls}">${fmtMoney(m.finalTotal)}</td>
-        <td class="${m.cagr >= 0 ? "pos" : "neg"}">${fmtPct(m.cagr)}</td>
+        <td class="${cagrShown >= 0 ? "pos" : "neg"}">${fmtPct(cagrShown)}</td>
         <td class="neg">${fmtPct(m.maxDD)}</td>
         <td>${m.sharpe.toFixed(2)}</td>
         <td>${fmtMoney(res.holdAllSmh)}</td>
@@ -808,6 +910,10 @@
     $("run").addEventListener("click", run);
     $("source").addEventListener("change", () => { fillRecommend(); updateRange(true); run(); });
     $("recommend").addEventListener("click", () => { fillRecommend(); run(); });
+    // 勾选/取消定投：切换到对应口径的推荐参数并立即重跑，省掉手动点一次推荐
+    if ($("dca")) {
+      $("dca").addEventListener("change", () => { fillRecommend(); run(); });
+    }
     document.querySelectorAll("#curveToggle span").forEach((s) => {
       s.addEventListener("click", () => {
         s.classList.toggle("on");
