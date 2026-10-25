@@ -389,7 +389,14 @@
   </div>
 </div>
 
-<script src="data.js?v=4"></script>
+<script>
+// data.js 由云端工作流定期重建，这里按「小时」附加一个 token，
+// 避免浏览器长期缓存旧行情导致更新后看不到新数据（同一小时内仍可命中缓存）。
+(function () {
+  var t = new Date().toISOString().slice(0, 13).replace(/[-T:]/g, '');
+  document.write('<script src="data.js?v=4&t=' + t + '"><\/script>');
+})();
+</script>
 <script src="backtest.js?v=9"></script>
 <script src="app.js?v=15"></script>
 <script>
@@ -406,6 +413,131 @@
 })();
 </script>
 <script>
+// ===== 云端更新（GitHub Pages 等静态托管）=====
+// 静态页面不能直接写仓库，所以这里调用 GitHub REST API 触发 update-data.yml 工作流：
+// 云端抓取五标的行情 -> 重建 web/data.js -> 提交回仓库 -> 重新发布 Pages。
+// 触发 workflow_dispatch 必须带令牌，令牌只存使用者自己浏览器的 localStorage，不入库。
+var GH_OWNER = 'fanruihwaiting8';
+var GH_REPO = 'SMHDataAnalysis';
+var GH_WORKFLOW = 'update-data.yml';
+var GH_TOKEN_KEY = 'smh_gh_token';
+var GH_POLL_MS = 5000;
+var GH_TIMEOUT_MS = 12 * 60 * 1000;
+var GH_PAGES_WAIT_MS = 75 * 1000;
+
+function ghToken(forceAsk) {
+  var t = '';
+  try { t = localStorage.getItem(GH_TOKEN_KEY) || ''; } catch (e) { }
+  if (t && !forceAsk) return t;
+  var v = prompt('请输入 GitHub 个人访问令牌（Fine-grained PAT，只需对仓库 '
+    + GH_REPO + ' 开 Actions = Read and write）。\n'
+    + '令牌仅保存在你自己的浏览器里，不会写入仓库或上传第三方。', t || '');
+  if (v === null) return '';
+  v = v.trim();
+  try {
+    if (v) localStorage.setItem(GH_TOKEN_KEY, v);
+    else localStorage.removeItem(GH_TOKEN_KEY);
+  } catch (e) { }
+  return v;
+}
+
+function ghApi(path, token, init) {
+  init = init || {};
+  init.headers = {
+    'Accept': 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    'Authorization': 'Bearer ' + token
+  };
+  return fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + path, init);
+}
+
+function ghLatestRunId(token) {
+  return ghApi('/actions/workflows/' + GH_WORKFLOW + '/runs?per_page=1', token)
+    .then(function (r) { return r.ok ? r.json() : { workflow_runs: [] }; })
+    .then(function (j) {
+      var runs = (j && j.workflow_runs) || [];
+      return runs.length ? runs[0].id : 0;
+    });
+}
+
+function initCloudUpdate(btn, status) {
+  btn.textContent = '🔄 更新最新数据（云端）';
+  btn.title = '调用 GitHub Actions 在云端抓取最新行情并更新本页数据（需 GitHub 令牌；按住 Shift 点击可重设令牌）';
+  if (status) {
+    status.textContent = '在线版数据由 GitHub Actions 维护：每个交易日收盘后自动刷新，也可点左侧按钮立即更新（需仓库令牌）。';
+  }
+
+  btn.addEventListener('click', function (ev) {
+    var token = ghToken(!!ev.shiftKey);
+    if (!token) { status.textContent = '已取消（未提供令牌）。'; return; }
+    if (!confirm('将在 GitHub 云端抓取 SMH/SOXL/QQQ/TQQQ/USD 最新行情并更新页面数据，约需 3~6 分钟。是否继续？')) return;
+
+    btn.disabled = true;
+    var t0 = Date.now();
+    var prevId = 0;
+    var runUrl = '';
+    var tick = setInterval(function () {
+      var s = Math.round((Date.now() - t0) / 1000);
+      status.textContent = '⏳ 云端更新中…已用时 ' + s + ' 秒'
+        + (runUrl ? '（可在 Actions 页查看进度）' : '');
+    }, 1000);
+
+    function stop(msg, enable) {
+      clearInterval(tick);
+      status.innerHTML = msg + (runUrl ? ' <a href="' + runUrl + '" target="_blank" style="color:#f0883e">查看日志</a>' : '');
+      if (enable) btn.disabled = false;
+    }
+
+    ghLatestRunId(token).then(function (id) {
+      prevId = id;
+      return ghApi('/actions/workflows/' + GH_WORKFLOW + '/dispatches', token, {
+        method: 'POST',
+        body: JSON.stringify({ ref: 'main' })
+      });
+    }).then(function (r) {
+      if (r.status === 204) return;
+      if (r.status === 401 || r.status === 403) {
+        try { localStorage.removeItem(GH_TOKEN_KEY); } catch (e) { }
+        throw new Error('令牌无效或权限不足（需 Actions=Read and write），已清除，请重新点击按钮输入。');
+      }
+      if (r.status === 404) {
+        throw new Error('未找到工作流 ' + GH_WORKFLOW + '，或令牌无该仓库权限。');
+      }
+      return r.text().then(function (t) { throw new Error('触发失败 HTTP ' + r.status + ' ' + t); });
+    }).then(function () {
+      function poll() {
+        if (Date.now() - t0 > GH_TIMEOUT_MS) { stop('⌛ 等待超时，请到 Actions 页查看运行结果。', true); return; }
+        ghApi('/actions/workflows/' + GH_WORKFLOW + '/runs?per_page=3', token)
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            var runs = (j && j.workflow_runs) || [];
+            var run = null;
+            for (var i = 0; i < runs.length; i++) {
+              if (runs[i].id !== prevId) { run = runs[i]; break; }
+            }
+            if (!run) { setTimeout(poll, GH_POLL_MS); return; }
+            runUrl = run.html_url;
+            if (run.status !== 'completed') { setTimeout(poll, GH_POLL_MS); return; }
+            if (run.conclusion === 'success') {
+              clearInterval(tick);
+              status.textContent = '✅ 云端数据已更新，等待 Pages 发布完成（约 1 分钟）后自动刷新…';
+              setTimeout(function () {
+                location.href = location.pathname + '?r=' + Date.now();
+              }, GH_PAGES_WAIT_MS);
+            } else {
+              stop('❌ 云端运行结束但未成功（' + run.conclusion + '）。', true);
+            }
+          })
+          .catch(function (e) { stop('❌ 查询运行状态失败：' + e, true); });
+      }
+      setTimeout(poll, 3000);
+    }).catch(function (e) {
+      stop('❌ ' + (e && e.message ? e.message : e), true);
+    });
+  });
+}
+</script>
+<script>
 // 点击「更新最新数据」：请求本地服务联网抓取五标的行情并重建 data.js，完成后刷新页面。
 (function () {
   var btn = document.getElementById('updateData');
@@ -413,16 +545,13 @@
   if (!btn) return;
 
   // 静态托管（如 GitHub Pages）没有 serve.py 后端，/api/update 不可用。
-  // 此时隐藏「更新最新数据」按钮并说明数据为构建时快照，避免用户点了必然报错。
+  // 此时改走 GitHub Actions：用用户自带的个人令牌触发 update-data.yml 工作流，
+  // 由云端抓取行情、重建 data.js 并提交回仓库，再自动重新发布 Pages。
   var h = location.hostname;
   var isLocalBackend = (location.protocol === 'http:' || location.protocol === 'https:')
     && (h === 'localhost' || h === '127.0.0.1' || h === '[::1]');
   if (!isLocalBackend) {
-    btn.style.display = 'none';
-    if (status) {
-      status.textContent = '在线版行情数据为发布时快照；如需抓取最新数据，'
-        + '请克隆仓库后用 python web/serve.py 本地运行。';
-    }
+    initCloudUpdate(btn, status);
     return;
   }
 

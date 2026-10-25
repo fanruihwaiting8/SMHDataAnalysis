@@ -1,0 +1,82 @@
+name: Update price data
+
+# 联网刷新 Input/*.csv（SMH/SOXL/QQQ/TQQQ/USD 五标的行情），
+# 重建 web/data.js 并提交回仓库，随后重新发布 GitHub Pages。
+#
+# 触发方式：
+#   1) 页面上的「🔄 更新最新数据（云端）」按钮 —— 走 REST API workflow_dispatch
+#   2) Actions 页面手动 Run workflow
+#   3) 定时：美东收盘后（22:30 UTC，周二~周六 ≈ 周一~周五收盘）
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 22 * * 2-6'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# 与 pages.yml 共用一个 concurrency group，避免两个工作流同时部署 Pages
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # update_data.py / build_data.py 只用标准库（urllib/csv/json），无需安装依赖
+
+      - name: Fetch latest prices
+        run: python update_data.py
+
+      - name: Rebuild web/data.js
+        run: python web/build_data.py
+
+      - name: Commit changed data
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Input/*.csv web/data.js
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "行情无变化，跳过提交"
+          else
+            git commit -m "chore(data): 自动刷新五标的行情数据"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # GITHUB_TOKEN 产生的 push 不会触发 pages.yml，所以这里直接部署一次
+  deploy:
+    needs: update
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload web/ as Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
