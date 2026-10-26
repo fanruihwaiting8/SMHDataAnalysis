@@ -69,6 +69,16 @@
   }
   .toggle span.on { background: var(--primary); color: #fff; border-color: var(--primary); }
   .note { font-size: 12px; color: var(--muted); }
+  /* 页头：标题在左，语言切换器固定在右上角 */
+  .hdr { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .hdr .hdr-main { min-width: 0; }
+  .langbar { display: flex; gap: 6px; flex: 0 0 auto; margin-top: 10px; }
+  .langbar span {
+    font-size: 12px; padding: 4px 12px; border: 1px solid var(--border);
+    border-radius: 20px; cursor: pointer; color: var(--muted);
+    background: var(--card); white-space: nowrap; user-select: none;
+  }
+  .langbar span.on { background: var(--primary); color: #fff; border-color: var(--primary); }
   /* 定投勾选框 */
   .chk {
     display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
@@ -177,62 +187,71 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>半导体 ETF · 回撤补仓策略回测</h1>
-  <div class="sub">纯浏览器运行，调参后实时重算。SMH=1x 基准端，SOXL/TQQQ/USD=杠杆端。<br/>
-    历史数据模拟回测，非市场预测，不构成投资建议 —— 请阅读<a href="#disclaimer" style="color:#f0883e">页面底部免责声明</a>。</div>
+  <div class="hdr">
+    <div class="hdr-main">
+      <h1 data-i18n="hdr.h1">半导体 ETF · 回撤补仓策略回测</h1>
+      <div class="sub" data-i18n-html="hdr.sub">纯浏览器运行，调参后实时重算。SMH=1x 基准端，SOXL/TQQQ/USD=杠杆端。<br/>
+        历史数据模拟回测，非市场预测，不构成投资建议 —— 请阅读<a href="#disclaimer" style="color:#f0883e">页面底部免责声明</a>。</div>
+    </div>
+    <!-- 语言切换器：右上角，中/英两档 -->
+    <div class="langbar" id="langbar">
+      <span data-lang-btn="zh" data-i18n="lang.zh">中文</span>
+      <span data-lang-btn="en" data-i18n="lang.en">English</span>
+    </div>
+  </div>
   <div style="margin: 0 0 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-    <button class="ghost" id="updateData">🔄 更新最新数据</button>
+    <button class="ghost" id="updateData" data-i18n="btn.update">🔄 更新最新数据</button>
     <span class="note" id="updateStatus"></span>
   </div>
 
   <!-- 新手使用指引：默认收起，点开后内部各小节再按需展开 -->
   <details class="card guide" id="guide">
-    <summary>📖 第一次使用？点开看这里 <span class="hint">（不看也能直接点「运行回测」）</span></summary>
+    <summary data-i18n-html="guide.summary">📖 第一次使用？点开看这里 <span class="hint">（不看也能直接点「运行回测」）</span></summary>
     <div class="body">
-      <div class="tldr">
+      <div class="tldr" data-i18n-html="guide.tldr">
         <b>一句话：</b>测「大跌时把一部分钱换成杠杆 ETF、大涨后再换回来」长期比死拿多赚多少、多扛多少回撤。<br/>
         <b>最快上手：</b>点 <code>填入推荐参数</code> → 点 <code>运行回测</code>，先看结果再回来看规则。<br/>
         <span class="warn">⚠️ 本策略放大下跌、不保护下跌</span>，参数基于历史最优存在过拟合，<b>不构成投资建议</b>。
       </div>
 
       <details class="sec">
-        <summary>策略只有两条规则</summary>
+        <summary data-i18n="guide.s1.title">策略只有两条规则</summary>
         <ul>
-          <li><b>回撤补仓（越跌越上杠杆）</b>：基准端（如 SMH）从历史最高点跌到 -15%/-25%/-35%… 某一档时，卖掉当时基准端市值的指定比例，全部买入杠杆端（如 SOXL）。每档在同一轮下跌中只触发一次。</li>
-          <li><b>反弹减仓（涨回来就落袋）</b>：基准端从「有效底部」反弹 +50%/+100%/+200% 某一档时，卖掉当时杠杆端市值的指定比例，换回基准端。</li>
-          <li><b>有效底部</b>＝本轮自高点回撤超过 25% 后出现的最低价。小幅回调不算新底部，避免刚跌一点就被误判成「抄到底」。</li>
+          <li data-i18n-html="guide.s1.li1"><b>回撤补仓（越跌越上杠杆）</b>：基准端（如 SMH）从历史最高点跌到 -15%/-25%/-35%… 某一档时，卖掉当时基准端市值的指定比例，全部买入杠杆端（如 SOXL）。每档在同一轮下跌中只触发一次。</li>
+          <li data-i18n-html="guide.s1.li2"><b>反弹减仓（涨回来就落袋）</b>：基准端从「有效底部」反弹 +50%/+100%/+200% 某一档时，卖掉当时杠杆端市值的指定比例，换回基准端。</li>
+          <li data-i18n-html="guide.s1.li3"><b>有效底部</b>＝本轮自高点回撤超过 25% 后出现的最低价。小幅回调不算新底部，避免刚跌一点就被误判成「抄到底」。</li>
         </ul>
       </details>
 
       <details class="sec">
-        <summary>四步跑出第一个结果</summary>
+        <summary data-i18n="guide.s2.title">四步跑出第一个结果</summary>
         <ol>
-          <li><b>选数据源</b>：SMH/SOXL（半导体 3 倍）、QQQ/TQQQ（纳指 3 倍）、SMH/USD（半导体 2 倍）。</li>
-          <li><b>填投入金额</b>：基准端与杠杆端各投多少美元，默认各 5 万。</li>
-          <li><b>设置档位百分比</b>：不确定填多少就直接点 <code>填入推荐参数</code>（该数据源近 10 年收益最优的网格搜索结果）。填 <code>0</code> 表示这一档不操作。</li>
-          <li>点 <code>运行回测</code>。改任何参数后重新点一次即可。</li>
+          <li data-i18n-html="guide.s2.li1"><b>选数据源</b>：SMH/SOXL（半导体 3 倍）、QQQ/TQQQ（纳指 3 倍）、SMH/USD（半导体 2 倍）。</li>
+          <li data-i18n-html="guide.s2.li2"><b>填投入金额</b>：基准端与杠杆端各投多少美元，默认各 5 万。</li>
+          <li data-i18n-html="guide.s2.li3"><b>设置档位百分比</b>：不确定填多少就直接点 <code>填入推荐参数</code>（该数据源近 10 年收益最优的网格搜索结果）。填 <code>0</code> 表示这一档不操作。</li>
+          <li data-i18n-html="guide.s2.li4">点 <code>运行回测</code>。改任何参数后重新点一次即可。</li>
         </ol>
       </details>
 
       <details class="sec">
-        <summary>结果怎么看</summary>
+        <summary data-i18n="guide.s3.title">结果怎么看</summary>
         <ul>
-          <li><b>参数区的状态条与小字</b>：显示当前最新价、距峰值跌幅、距有效底部涨幅，以及每一档<b>还要跌/涨到多少钱才会触发</b>——这是把回测结论用到实盘的地方。</li>
-          <li><b>关键指标</b>：最终总资金、CAGR 年化、最大回撤（越小越好）、夏普、最长套牢天数。</li>
-          <li><b>净值曲线</b>：动态策略 vs 50-50 不动 vs 纯持基准 vs 纯持杠杆，四条线同口径对比；红三角＝补仓、绿箭头＝减仓；鼠标悬停看当日各条曲线数值与当日成交价。资金差距过大时勾上「对数坐标」更易读。</li>
-          <li><b>组合横向对比</b>：同一区间内几组标的谁更强。</li>
-          <li><b>逐笔交易明细</b>：每次换仓的日期、方向、换了多少钱、<b>当天两端的成交价</b>（本模型按当日收盘价成交）、成交后总资金。</li>
-          <li><b>进场建议</b>（页面最底部）：按当前选中组合的真实状态，给出此刻两端配比与之后各档的触发价与金额。</li>
-          <li><b>每月定投</b>（运行回测那一栏的勾选框）：勾上后每月第一个交易日注入「起始资金的 1%」全额买入基准端，四条对比曲线用同一现金流。此时点「填入推荐参数」会填入<b>按定投口径重新网格搜索</b>出的加减仓比例（参数区下方会列出与一次性投入的差异），指标也换成 XIRR / TWR + 累计投入、净盈亏，因为陆续投钱时净值倍数已不可比。勾选框右侧会显示<b>截止回测末日的累计定投总额</b>（期数 × 每月金额）以及「起始本金 + 定投 = 累计投入」。</li>
+          <li data-i18n-html="guide.s3.li1"><b>参数区的状态条与小字</b>：显示当前最新价、距峰值跌幅、距有效底部涨幅，以及每一档<b>还要跌/涨到多少钱才会触发</b>——这是把回测结论用到实盘的地方。</li>
+          <li data-i18n-html="guide.s3.li2"><b>关键指标</b>：最终总资金、CAGR 年化、最大回撤（越小越好）、夏普、最长套牢天数。</li>
+          <li data-i18n-html="guide.s3.li3"><b>净值曲线</b>：动态策略 vs 50-50 不动 vs 纯持基准 vs 纯持杠杆，四条线同口径对比；红三角＝补仓、绿箭头＝减仓；鼠标悬停看当日各条曲线数值与当日成交价。资金差距过大时勾上「对数坐标」更易读。</li>
+          <li data-i18n-html="guide.s3.li4"><b>组合横向对比</b>：同一区间内几组标的谁更强。</li>
+          <li data-i18n-html="guide.s3.li5"><b>逐笔交易明细</b>：每次换仓的日期、方向、换了多少钱、<b>当天两端的成交价</b>（本模型按当日收盘价成交）、成交后总资金。</li>
+          <li data-i18n-html="guide.s3.li6"><b>进场建议</b>（页面最底部）：按当前选中组合的真实状态，给出此刻两端配比与之后各档的触发价与金额。</li>
+          <li data-i18n-html="guide.s3.li7"><b>每月定投</b>（运行回测那一栏的勾选框）：勾上后每月第一个交易日注入「起始资金的 1%」全额买入基准端，四条对比曲线用同一现金流。此时点「填入推荐参数」会填入<b>按定投口径重新网格搜索</b>出的加减仓比例（参数区下方会列出与一次性投入的差异），指标也换成 XIRR / TWR + 累计投入、净盈亏，因为陆续投钱时净值倍数已不可比。勾选框右侧会显示<b>截止回测末日的累计定投总额</b>（期数 × 每月金额）以及「起始本金 + 定投 = 累计投入」。</li>
         </ul>
       </details>
 
       <details class="sec">
-        <summary>必须知道的三点（风险）</summary>
+        <summary data-i18n="guide.s4.title">必须知道的三点（风险）</summary>
         <ul>
-          <li><span class="warn">本策略放大下跌、不保护下跌</span>：越跌越加杠杆，极端行情下可能在最低点满仓杠杆，回撤远大于纯持基准。</li>
-          <li>参数是在历史数据上找最优，<b>存在过拟合</b>，未来不会原样重现。</li>
-          <li>在线版行情为发布时的快照；想抓最新数据请克隆仓库后用 <code>python web/serve.py</code> 本地运行。结果仅为研究用途，<b>不构成投资建议</b>。</li>
+          <li data-i18n-html="guide.s4.li1"><span class="warn">本策略放大下跌、不保护下跌</span>：越跌越加杠杆，极端行情下可能在最低点满仓杠杆，回撤远大于纯持基准。</li>
+          <li data-i18n-html="guide.s4.li2">参数是在历史数据上找最优，<b>存在过拟合</b>，未来不会原样重现。</li>
+          <li data-i18n-html="guide.s4.li3">在线版行情为发布时的快照；想抓最新数据请克隆仓库后用 <code>python web/serve.py</code> 本地运行。结果仅为研究用途，<b>不构成投资建议</b>。</li>
         </ul>
       </details>
     </div>
@@ -240,62 +259,62 @@
 
   <!-- 参数区 -->
   <div class="card">
-    <h2>策略参数</h2>
+    <h2 data-i18n="param.h2">策略参数</h2>
     <div class="row">
       <div class="field">
-        <label>数据源</label>
+        <label data-i18n="param.source">数据源</label>
         <select id="source">
-          <option value="SMH">SMH / SOXL（半导体·3x）</option>
-          <option value="QQQ">QQQ / TQQQ（纳指100·3x）</option>
-          <option value="USD">SMH / USD（半导体·2x）</option>
+          <option value="SMH" data-i18n="param.src.SMH">SMH / SOXL（半导体·3x）</option>
+          <option value="QQQ" data-i18n="param.src.QQQ">QQQ / TQQQ（纳指100·3x）</option>
+          <option value="USD" data-i18n="param.src.USD">SMH / USD（半导体·2x）</option>
         </select>
       </div>
       <div class="field">
-        <label>基准端投入 ($)</label><input id="capA" type="number" value="50000" />
+        <label data-i18n="param.capA">基准端投入 ($)</label><input id="capA" type="number" value="50000" />
         <div class="allocHint" id="hintA"></div>
       </div>
       <div class="field">
-        <label>杠杆端投入 ($)</label><input id="capB" type="number" value="50000" />
+        <label data-i18n="param.capB">杠杆端投入 ($)</label><input id="capB" type="number" value="50000" />
         <div class="allocHint" id="hintB"></div>
       </div>
       <div class="field">
-        <label>起始日期</label>
+        <label data-i18n="param.start">起始日期</label>
         <div class="dsel" id="startSel">
-          <select class="d-y" aria-label="起始年"></select>
-          <select class="d-m" aria-label="起始月"></select>
-          <select class="d-d" aria-label="起始日"></select>
+          <select class="d-y" data-i18n-aria="aria.startY" aria-label="起始年"></select>
+          <select class="d-m" data-i18n-aria="aria.startM" aria-label="起始月"></select>
+          <select class="d-d" data-i18n-aria="aria.startD" aria-label="起始日"></select>
         </div>
         <input id="startDate" type="hidden" />
       </div>
       <div class="field">
-        <label>截止日期</label>
+        <label data-i18n="param.end">截止日期</label>
         <div class="dsel" id="endSel">
-          <select class="d-y" aria-label="截止年"></select>
-          <select class="d-m" aria-label="截止月"></select>
-          <select class="d-d" aria-label="截止日"></select>
+          <select class="d-y" data-i18n-aria="aria.endY" aria-label="截止年"></select>
+          <select class="d-m" data-i18n-aria="aria.endM" aria-label="截止月"></select>
+          <select class="d-d" data-i18n-aria="aria.endD" aria-label="截止日"></select>
         </div>
         <input id="endDate" type="hidden" />
       </div>
     </div>
     <div class="grp row">
-      <button class="ghost" id="allocAdvise" title="按当前数据源、总投入与起始日期在历史价格空间中的位置，推荐开局的基准端/杠杆端配比">💡 初始配比推荐</button>
+      <button class="ghost" id="allocAdvise" data-i18n="param.allocAdvise" data-i18n-title="param.allocAdvise.title" title="按当前数据源、总投入与起始日期在历史价格空间中的位置，推荐开局的基准端/杠杆端配比">💡 初始配比推荐</button>
     </div>
 
   <div class="grp">
-      <div class="lbl">▼ 回撤补仓：基准端相对峰值回撤达标时，卖出基准端市值的百分比转买杠杆端</div>
+      <div class="lbl" data-i18n="param.ddLbl">▼ 回撤补仓：基准端相对峰值回撤达标时，卖出基准端市值的百分比转买杠杆端</div>
       <div class="status dd" id="ddStatus"></div>
       <div class="row" id="ddRow"></div>
     </div>
     <div class="grp">
-      <div class="lbl">▲ 反弹减仓：基准端相对有效底部反弹达标时，卖出杠杆端市值的百分比转买基准端</div>
+      <div class="lbl" data-i18n="param.rbLbl">▲ 反弹减仓：基准端相对有效底部反弹达标时，卖出杠杆端市值的百分比转买基准端</div>
       <div class="status rb" id="rbStatus"></div>
       <div class="row" id="rbRow"></div>
     </div>
     <div class="grp row">
-      <button id="run">运行回测</button>
-      <button class="ghost" id="recommend">填入推荐参数</button>
-      <label class="chk" id="dcaWrap" title="每月第一个交易日注入「基准端+杠杆端起始资金之和」的 1%，全额买入基准端，之后是否换成杠杆端仍由上面的回撤档位决定">
-        <input type="checkbox" id="dca" /> 每月定投（起始资金的 1%）
+      <button id="run" data-i18n="btn.run">运行回测</button>
+      <button class="ghost" id="recommend" data-i18n="btn.recommend">填入推荐参数</button>
+      <label class="chk" id="dcaWrap" data-i18n-title="dca.title" title="每月第一个交易日注入「基准端+杠杆端起始资金之和」的 1%，全额买入基准端，之后是否换成杠杆端仍由上面的回撤档位决定">
+        <input type="checkbox" id="dca" /> <span data-i18n="dca.label">每月定投（起始资金的 1%）</span>
       </label>
       <span class="dcaSum" id="dcaSum" style="display:none"></span>
       <span class="note" id="rangeNote"></span>
@@ -305,40 +324,43 @@
 
   <!-- 指标卡 -->
   <div class="card">
-    <h2>关键指标（动态策略）</h2>
+    <h2 data-i18n="metrics.h2">关键指标（动态策略）</h2>
     <div class="cards" id="metrics"></div>
   </div>
 
-  <!-- 净值曲线 -->
+<!-- 净值曲线 -->
   <div class="card">
-    <h2>净值曲线</h2>
+    <h2 data-i18n="chart.h2">净值曲线</h2>
     <div class="toggle" id="curveToggle">
-      <span data-k="strategy" class="on">动态策略</span>
-      <span data-k="hold5050" class="on">50-50 不动</span>
-      <span data-k="holdA" class="on">纯持基准</span>
-      <span data-k="holdB" class="on">纯持杠杆</span>
-      <span data-k="log" class="on">对数坐标</span>
+      <span data-k="strategy" class="on" data-i18n="curve.strategy">动态策略</span>
+      <span data-k="hold5050" class="on" data-i18n="curve.hold5050">50-50 不动</span>
+      <span data-k="holdA" class="on" data-i18n="curve.holdA">纯持基准</span>
+      <span data-k="holdB" class="on" data-i18n="curve.holdB">纯持杠杆</span>
+      <span data-k="log" class="on" data-i18n="curve.log">对数坐标</span>
     </div>
     <div id="chart"></div>
   </div>
 
   <!-- 组合横向对比 -->
   <div class="card">
-    <h2>组合横向对比（跟随上方设定的日期区间）</h2>
+    <h2 data-i18n="cmp.h2">组合横向对比（跟随上方设定的日期区间）</h2>
     <div class="toggle" id="cmpToggle">
       <span data-k="SMH" class="on">SMH / SOXL</span>
       <span data-k="QQQ">QQQ / TQQQ</span>
       <span data-k="USD" class="on">SMH / USD</span>
     </div>
-    <div class="note" style="margin-bottom:10px">
+    <div class="note" style="margin-bottom:10px" data-i18n="cmp.note">
       勾选想对比的组合。对比区间跟随上方「起始/截止日期」的设定：各组均在你设定的范围内计算，便于同期对比。若某组的标的数据晚于你设定的起点（如 SMH 仅有近 10 年数据），则该组从其数据首日起算。未设起点时，才会兜底为勾选组合涉及标的中最晚的上市日。
     </div>
     <div class="note" style="margin-bottom:10px" id="cmpNote"></div>
     <div class="tbl-wrap">
       <table class="cmp-tbl">
         <thead><tr>
-          <th>组合</th><th>区间</th><th>最终资金</th><th>CAGR</th><th>最大回撤</th>
-          <th>夏普</th><th>纯持基准</th><th>纯持杠杆</th><th>交易数</th>
+          <th data-i18n="cmp.th.group">组合</th><th data-i18n="cmp.th.range">区间</th>
+          <th data-i18n="cmp.th.final">最终资金</th><th data-i18n="cmp.th.cagr">CAGR</th>
+          <th data-i18n="cmp.th.maxdd">最大回撤</th><th data-i18n="cmp.th.sharpe">夏普</th>
+          <th data-i18n="cmp.th.holdA">纯持基准</th><th data-i18n="cmp.th.holdB">纯持杠杆</th>
+          <th data-i18n="cmp.th.trades">交易数</th>
         </tr></thead>
         <tbody id="cmpBody"></tbody>
       </table>
@@ -347,16 +369,16 @@
 
   <!-- 逐笔交易 -->
   <div class="card">
-    <h2>逐笔交易明细 <span class="note" id="tradeCount"></span></h2>
+    <h2><span data-i18n="trade.h2">逐笔交易明细</span> <span class="note" id="tradeCount"></span></h2>
     <div class="tbl-wrap">
       <table>
-        <thead><tr><th>成交日</th><th>类型</th><th>说明</th><th id="thPriceA">基准端成交价</th><th id="thPriceB">杠杆端成交价</th><th>成交后总资金</th></tr></thead>
+        <thead><tr><th data-i18n="trade.th.date">成交日</th><th data-i18n="trade.th.type">类型</th><th data-i18n="trade.th.desc">说明</th><th id="thPriceA">基准端成交价</th><th id="thPriceB">杠杆端成交价</th><th data-i18n="trade.th.equity">成交后总资金</th></tr></thead>
         <tbody id="tradeBody"></tbody>
       </table>
     </div>
   </div>
 
-  <div class="note">
+  <div class="note" data-i18n="risk.note">
     ⚠ 本策略放大下跌、不保护下跌：越跌越加杠杆，意味着可能在最低点满仓杠杆。
     夏普未扣无风险利率，仅供本工具内部横向比较。SOXL 为美股上市 3 倍半导体 ETF
     （Direxion Daily Semiconductor Bull 3X），跟踪 ICE 半导体指数，与 SMH 持仓口径不完全一致。
@@ -364,10 +386,10 @@
 
   <!-- 进场建议（页面最底端） -->
   <div class="card" id="adviceCard">
-    <h2>进场建议：此刻入场怎么买、什么价位买 <span class="note" id="adviceSub"></span></h2>
-    <div class="note" style="margin-bottom:10px">
+    <h2><span data-i18n="advice.h2">进场建议：此刻入场怎么买、什么价位买</span> <span class="note" id="adviceSub"></span></h2>
+    <div class="note" style="margin-bottom:10px" data-i18n-html="advice.note">
       以当前数据源的<b>最新交易日收盘价</b>为进场价，在上方「补仓/减仓参数」保持不变的前提下，
-      从历史上<b>与当下同阶段</b>（同为创新高 / 高位回调 / 深度回撤探底 / 底部反弹，且回撤或反弹幅度接近）
+     从历史上<b>与当下同阶段</b>（同为创新高 / 高位回调 / 深度回撤探底 / 底部反弹，且回撤或反弹幅度接近）
       的若干个日期分别起算，逐一回测不同的「初始杠杆端占比」，挑出未来表现最优的配比。
       价位清单沿用<b>策略真实状态</b>（历史峰值 / 本轮有效底部 + 本轮已触发档），
       与上方「补仓/减仓触发价」完全一致，可直接对照执行。
@@ -378,13 +400,13 @@
 
   <!-- 免责声明（页面页脚，始终可见） -->
   <div class="card disclaimer" id="disclaimer">
-    <h2>⚠️ 免责声明</h2>
+    <h2 data-i18n="disc.h2">⚠️ 免责声明</h2>
     <ul>
-      <li>本工具是<b>历史数据模拟回测</b>，所有结论都来自过去的收盘价推演，<b>不是对未来市场的预测</b>。真实市场会出现历史上从未有过的走势。</li>
-      <li>模型做了简化：按<b>当日收盘价成交</b>、不计佣金/点差/滑点/税费，不计杠杆 ETF 的<b>日内再平衡损耗、管理费与长期衰减</b>，也不考虑停牌、流动性不足与退市风险。实际成交结果会与此处数字有差异。</li>
-      <li>「推荐参数」「进场建议」均由历史数据择优得到，<b>存在过拟合</b>，只是基于既有数据的一种计算结果，<b>仅供研究与参考</b>。</li>
-      <li>杠杆 ETF 属高风险品种，本策略越跌越加杠杆，<span class="warn">放大下跌、不保护下跌</span>，极端行情下可能出现远大于标的本身的巨额亏损。</li>
-      <li>本页面及作者<b>不构成任何投资建议、要约或收益承诺</b>，不对行情数据的准确性、及时性与完整性负责，也不对任何人依据本工具做出的投资决策及其盈亏承担责任。投资有风险，决策与后果由使用者自行承担。</li>
+      <li data-i18n-html="disc.li1">本工具是<b>历史数据模拟回测</b>，所有结论都来自过去的收盘价推演，<b>不是对未来市场的预测</b>。真实市场会出现历史上从未有过的走势。</li>
+      <li data-i18n-html="disc.li2">模型做了简化：按<b>当日收盘价成交</b>、不计佣金/点差/滑点/税费，不计杠杆 ETF 的<b>日内再平衡损耗、管理费与长期衰减</b>，也不考虑停牌、流动性不足与退市风险。实际成交结果会与此处数字有差异。</li>
+      <li data-i18n-html="disc.li3">「推荐参数」「进场建议」均由历史数据择优得到，<b>存在过拟合</b>，只是基于既有数据的一种计算结果，<b>仅供研究与参考</b>。</li>
+      <li data-i18n-html="disc.li4">杠杆 ETF 属高风险品种，本策略越跌越加杠杆，<span class="warn">放大下跌、不保护下跌</span>，极端行情下可能出现远大于标的本身的巨额亏损。</li>
+      <li data-i18n-html="disc.li5">本页面及作者<b>不构成任何投资建议、要约或收益承诺</b>，不对行情数据的准确性、及时性与完整性负责，也不对任何人依据本工具做出的投资决策及其盈亏承担责任。投资有风险，决策与后果由使用者自行承担。</li>
     </ul>
   </div>
 </div>
@@ -397,8 +419,9 @@
   document.write('<script src="data.js?v=4&t=' + t + '"><\/script>');
 })();
 </script>
-<script src="backtest.js?v=9"></script>
-<script src="app.js?v=15"></script>
+<script src="i18n.js?v=2"></script>
+<script src="backtest.js?v=11"></script>
+<script src="app.js?v=17"></script>
 <script>
 // 使用指引的展开状态记忆：默认收起不干扰上手，用户展开后下次保持展开。
 (function () {
@@ -429,9 +452,7 @@ function ghToken(forceAsk) {
   var t = '';
   try { t = localStorage.getItem(GH_TOKEN_KEY) || ''; } catch (e) { }
   if (t && !forceAsk) return t;
-  var v = prompt('请输入 GitHub 个人访问令牌（Fine-grained PAT，只需对仓库 '
-    + GH_REPO + ' 开 Actions = Read and write）。\n'
-    + '令牌仅保存在你自己的浏览器里，不会写入仓库或上传第三方。', t || '');
+  var v = prompt(T('upd.token.prompt', { repo: GH_REPO }), t || '');
   if (v === null) return '';
   v = v.trim();
   try {
@@ -461,16 +482,23 @@ function ghLatestRunId(token) {
 }
 
 function initCloudUpdate(btn, status) {
-  btn.textContent = '🔄 更新最新数据（云端）';
-  btn.title = '调用 GitHub Actions 在云端抓取最新行情并更新本页数据（需 GitHub 令牌；按住 Shift 点击可重设令牌）';
-  if (status) {
-    status.textContent = '在线版数据由 GitHub Actions 维护：每个交易日收盘后自动刷新，也可点左侧按钮立即更新（需仓库令牌）。';
+  // 云端按钮文案由本脚本接管，去掉 data-i18n 以免被静态回填覆盖成本地版文案
+  btn.removeAttribute('data-i18n');
+  function applyCloudText() {
+    btn.textContent = T('upd.cloud.btn');
+    btn.title = T('upd.cloud.btnTitle');
+    if (status && !status.getAttribute('data-busy')) {
+      status.textContent = T('upd.cloud.hint');
+    }
   }
+  applyCloudText();
+  window.addEventListener('smh:langchange', applyCloudText);
 
   btn.addEventListener('click', function (ev) {
     var token = ghToken(!!ev.shiftKey);
-    if (!token) { status.textContent = '已取消（未提供令牌）。'; return; }
-    if (!confirm('将在 GitHub 云端抓取 SMH/SOXL/QQQ/TQQQ/USD 最新行情并更新页面数据，约需 3~6 分钟。是否继续？')) return;
+    if (!token) { status.textContent = T('upd.cancelled'); return; }
+    if (!confirm(T('upd.cloud.confirm'))) return;
+    status.setAttribute('data-busy', '1');
 
     btn.disabled = true;
     var t0 = Date.now();
@@ -478,13 +506,13 @@ function initCloudUpdate(btn, status) {
     var runUrl = '';
     var tick = setInterval(function () {
       var s = Math.round((Date.now() - t0) / 1000);
-      status.textContent = '⏳ 云端更新中…已用时 ' + s + ' 秒'
-        + (runUrl ? '（可在 Actions 页查看进度）' : '');
+      status.textContent = T('upd.cloud.progress', { s: s })
+        + (runUrl ? T('upd.cloud.progressHint') : '');
     }, 1000);
 
     function stop(msg, enable) {
       clearInterval(tick);
-      status.innerHTML = msg + (runUrl ? ' <a href="' + runUrl + '" target="_blank" style="color:#f0883e">查看日志</a>' : '');
+      status.innerHTML = msg + (runUrl ? ' <a href="' + runUrl + '" target="_blank" style="color:#f0883e">' + T('upd.viewLog') + '</a>' : '');
       if (enable) btn.disabled = false;
     }
 
@@ -498,15 +526,15 @@ function initCloudUpdate(btn, status) {
       if (r.status === 204) return;
       if (r.status === 401 || r.status === 403) {
         try { localStorage.removeItem(GH_TOKEN_KEY); } catch (e) { }
-        throw new Error('令牌无效或权限不足（需 Actions=Read and write），已清除，请重新点击按钮输入。');
+        throw new Error(T('upd.err.token'));
       }
       if (r.status === 404) {
-        throw new Error('未找到工作流 ' + GH_WORKFLOW + '，或令牌无该仓库权限。');
+        throw new Error(T('upd.err.workflow', { wf: GH_WORKFLOW }));
       }
-      return r.text().then(function (t) { throw new Error('触发失败 HTTP ' + r.status + ' ' + t); });
+      return r.text().then(function (t) { throw new Error(T('upd.err.dispatch', { status: r.status, body: t })); });
     }).then(function () {
       function poll() {
-        if (Date.now() - t0 > GH_TIMEOUT_MS) { stop('⌛ 等待超时，请到 Actions 页查看运行结果。', true); return; }
+        if (Date.now() - t0 > GH_TIMEOUT_MS) { stop(T('upd.cloud.timeout'), true); return; }
         ghApi('/actions/workflows/' + GH_WORKFLOW + '/runs?per_page=3', token)
           .then(function (r) { return r.json(); })
           .then(function (j) {
@@ -520,15 +548,15 @@ function initCloudUpdate(btn, status) {
             if (run.status !== 'completed') { setTimeout(poll, GH_POLL_MS); return; }
             if (run.conclusion === 'success') {
               clearInterval(tick);
-              status.textContent = '✅ 云端数据已更新，等待 Pages 发布完成（约 1 分钟）后自动刷新…';
+              status.textContent = T('upd.cloud.ok');
               setTimeout(function () {
                 location.href = location.pathname + '?r=' + Date.now();
               }, GH_PAGES_WAIT_MS);
             } else {
-              stop('❌ 云端运行结束但未成功（' + run.conclusion + '）。', true);
+              stop(T('upd.cloud.failed', { c: run.conclusion }), true);
             }
           })
-          .catch(function (e) { stop('❌ 查询运行状态失败：' + e, true); });
+          .catch(function (e) { stop(T('upd.cloud.queryFail', { e: e }), true); });
       }
       setTimeout(poll, 3000);
     }).catch(function (e) {
@@ -556,12 +584,13 @@ function initCloudUpdate(btn, status) {
   }
 
   btn.addEventListener('click', function () {
-    if (!confirm('将联网抓取 SMH/SOXL/QQQ/TQQQ/USD 的最新行情并重建数据，约需 1 分钟，期间请勿关闭页面。是否继续？')) return;
+    if (!confirm(T('upd.local.confirm'))) return;
     btn.disabled = true;
     var t0 = Date.now();
-    status.textContent = '⏳ 更新中，请稍候（约 1 分钟）…';
+    status.setAttribute('data-busy', '1');
+    status.textContent = T('upd.local.progress');
     var timer = setInterval(function () {
-      status.textContent = '⏳ 更新中，请稍候…已用时 ' + Math.round((Date.now() - t0) / 1000) + ' 秒';
+      status.textContent = T('upd.local.progressElapsed', { s: Math.round((Date.now() - t0) / 1000) });
     }, 1000);
     fetch('/api/update', { method: 'POST' })
       .then(function (r) { return r.json(); })
@@ -570,18 +599,18 @@ function initCloudUpdate(btn, status) {
         if (res.ok) {
           var parts = Object.keys(res.summary).map(function (k) {
             var s = res.summary[k];
-            return k + '：' + s.state + '（至 ' + (s.last || '-') + '）';
+            return T('upd.local.item', { k: k, state: s.state, last: s.last || '-' });
           });
-          status.textContent = '✅ 更新完成 —— ' + parts.join('；') + '。正在刷新页面…';
+          status.textContent = T('upd.local.ok', { parts: parts.join(T('upd.local.sep')) });
           setTimeout(function () { location.reload(); }, 1500);
         } else {
-          status.textContent = '❌ 更新失败：' + (res.error || '未知错误');
+          status.textContent = T('upd.local.failed', { e: res.error || T('upd.err.unknown') });
           btn.disabled = false;
         }
       })
       .catch(function (e) {
         clearInterval(timer);
-        status.textContent = '❌ 请求失败：' + e + '（请通过“本地预览(serve.py)”启动，勿直接双击 index.html）';
+        status.textContent = T('upd.local.reqFail', { e: e });
         btn.disabled = false;
       });
   });

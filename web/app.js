@@ -105,9 +105,9 @@
       return all.filter((d) => d.startsWith(`${y}-${m}-`)).map((d) => d.slice(8, 10));
     }
 
-    function fillYears() { ys.innerHTML = years().map((y) => opt(y, y + "年")).join(""); }
-    function fillMonths(y) { ms.innerHTML = monthsOf(y).map((m) => opt(m, +m + "月")).join(""); }
-    function fillDays(y, m) { ds.innerHTML = daysOf(y, m).map((d) => opt(d, +d + "日")).join(""); }
+    function fillYears() { ys.innerHTML = years().map((y) => opt(y, T("date.year", { y: y }))).join(""); }
+    function fillMonths(y) { ms.innerHTML = monthsOf(y).map((m) => opt(m, T("date.month", { m: +m }))).join(""); }
+    function fillDays(y, m) { ds.innerHTML = daysOf(y, m).map((d) => opt(d, T("date.day", { d: +d }))).join(""); }
 
     // 把三段下拉对齐到某个有效日期
     function setValue(dateStr) {
@@ -154,12 +154,12 @@
   // ---- 动态生成补仓/减仓输入框 ----
   function buildInputs() {
     $("ddRow").innerHTML = DD.map((lv) =>
-      `<div class="field"><label>回撤 -${lv}%</label>
+      `<div class="field"><label>${T("inp.ddLabel", { lv: lv })}</label>
        <input class="dd" data-lv="${lv}" type="number" value="${REC_DD[lv]}" />
        <div class="trig" id="ddTrig-${lv}"></div></div>`
     ).join("");
     $("rbRow").innerHTML = RB.map((lv) =>
-      `<div class="field"><label>反弹 +${lv}%</label>
+      `<div class="field"><label>${T("inp.rbLabel", { lv: lv })}</label>
        <input class="rb" data-lv="${lv}" type="number" value="${REC_RB[lv]}" />
        <div class="trig" id="rbTrig-${lv}"></div></div>`
     ).join("");
@@ -239,7 +239,7 @@
     const total = (+$("capA").value || 0) + (+$("capB").value || 0);
     if (!(total > 0)) {
       ha.className = "allocHint dim"; hb.className = "allocHint dim";
-      ha.textContent = "请先填写投入金额"; hb.textContent = "";
+      ha.textContent = T("alloc.needCapital"); hb.textContent = "";
       return;
     }
     let pos = null;
@@ -251,8 +251,8 @@
     const wA = 100 - wB;
     const m = (p) => fmtMoney(Math.round(total * p / 100));
     ha.className = "allocHint"; hb.className = "allocHint";
-    ha.textContent = `建议 ${m(wA)}（${wA}%）`;
-    hb.textContent = `建议 ${m(wB)}（${wB}%）`;
+    ha.textContent = T("alloc.suggest", { m: m(wA), p: wA });
+    hb.textContent = T("alloc.suggest", { m: m(wB), p: wB });
   }
   // 只在建议已经展示过（用户点过「初始配比推荐」）时才同步刷新，避免未点按钮就自动出现
   function refreshAllocTip() {
@@ -277,16 +277,15 @@
       const cls = a === b ? "" : " class=\"hit\"";
       return `<tr><td>${label}</td><td>${a}%</td><td${cls}>${b}%</td></tr>`;
     };
-    const rows = DD.map((lv) => row(`▼ 回撤 -${lv}%`, one.dd[lv], dca.dd[lv]))
-      .concat(RB.map((lv) => row(`▲ 反弹 +${lv}%`, one.rb[lv], dca.rb[lv])));
+    const rows = DD.map((lv) => row(T("dca.rec.rowDd", { lv }), one.dd[lv], dca.dd[lv]))
+      .concat(RB.map((lv) => row(T("dca.rec.rowRb", { lv }), one.rb[lv], dca.rb[lv])));
     box.innerHTML = '<div class="note" style="margin-bottom:8px">'
-      + `已开启每月定投：每月第一个交易日注入起始资金的 <b>${DCA_PCT}%</b>`
-      + (total > 0 ? ` = <b>${fmtMoney(total * DCA_PCT / 100)}</b>/月` : "")
-      + `，全额买入 ${src.na}；是否换成 ${src.nb} 仍由下列回撤档位决定。`
-      + "下表右列是按定投现金流重新做网格搜索（最近 10 年窗口、末日总资金最大化）得到的推荐值，"
-      + "<b>橙色</b>为与一次性投入不同的档位。点「填入推荐参数」即按右列填入。"
-      + '</div><table><thead><tr><th>档位</th><th>一次性投入推荐</th>'
-      + `<th>定投(${DCA_PCT}%/月)推荐</th></tr></thead><tbody>`
+      + T("dca.rec.note1", { pct: DCA_PCT })
+      + (total > 0 ? T("dca.rec.note2", { amt: fmtMoney(total * DCA_PCT / 100) }) : "")
+      + T("dca.rec.note3", { na: src.na, nb: src.nb })
+      + T("dca.rec.note4")
+      + `</div><table><thead><tr><th>${T("dca.rec.th.level")}</th><th>${T("dca.rec.th.one")}</th>`
+      + `<th>${T("dca.rec.th.dca", { pct: DCA_PCT })}</th></tr></thead><tbody>`
       + rows.join("") + "</tbody></table>";
     box.style.display = "";
   }
@@ -307,9 +306,14 @@
     }
     const principal = (res.totalInvested || 0) - sum;
     const lastDate = res.equityDates[res.equityDates.length - 1];
-    el.innerHTML = `截止 ${lastDate} 累计定投 <b>${fmtMoney(sum)}</b>`
-      + `（${n} 期 × ${fmtMoney(res.monthlyCash)}/月）`
-      + `；起始本金 ${fmtMoney(principal)} + 定投 = 累计投入 <b>${fmtMoney(res.totalInvested)}</b>`;
+    el.innerHTML = T("dca.sum", {
+      date: lastDate,
+      sum: fmtMoney(sum),
+      n: n,
+      per: fmtMoney(res.monthlyCash),
+      principal: fmtMoney(principal),
+      total: fmtMoney(res.totalInvested),
+    });
     el.style.display = "";
   }
 
@@ -329,7 +333,7 @@
       // 非强制重置时(切到更宽区间)尽量保留旧值，越界则由 DateSel 自动兜底到最近有效日。
       startSel.setDates(common, lo, !resetDates);
       endSel.setDates(common, hi, !resetDates);
-      $("rangeNote").textContent = `可选区间 ${lo} ~ ${hi}（共 ${common.length} 个交易日）`;
+      $("rangeNote").textContent = T("range.note", { lo: lo, hi: hi, n: common.length });
     }
   }
 
@@ -357,40 +361,44 @@
     const ddFired = new Set(st.ddFired);
     const rbFired = new Set(st.rbFired);
     const stale = st.troughStale;
-    const head = `截至 ${st.latestDate}｜当前阶段：<b>${st.phaseLabel}</b>`;
+    const head = T("live.head", { date: st.latestDate, phase: st.phaseLabel });
 
     // 补仓模块顶部：现价较历史最高点的跌幅（创新高当日为 0%）+ 本轮已用掉的档位
-    let ddTxt = st.ddPct <= 0
-      ? `${head}<br/>${src.na} 现价 <b>${fmtPrice(st.latestPrice)}</b>`
-        + `，正处历史最高点（${st.peakDate}），较峰值跌幅 <b>0.00%</b>`
-      : `${head}<br/>${src.na} 现价 <b>${fmtPrice(st.latestPrice)}</b>`
-        + `，较历史最高 ${fmtPrice(st.peak)}（${st.peakDate}）跌幅 <b>${st.ddPct.toFixed(2)}%</b>`;
-    ddTxt += st.ddFired.length
-      ? `<br/>└ ${st.ddFired.map((lv) => `-${lv}%`).join("/")} 档自上次创新高以来`
-        + `已触发过，本轮不会再次补仓；其余档位触发价仍然有效`
-      : `<br/>└ 五档均未触发，下方触发价全部有效`;
+    let ddTxt = head + "<br/>" + (st.ddPct <= 0
+      ? T("live.dd.atPeak", {
+          na: src.na, price: fmtPrice(st.latestPrice), peakDate: st.peakDate,
+        })
+      : T("live.dd.below", {
+          na: src.na, price: fmtPrice(st.latestPrice), peak: fmtPrice(st.peak),
+          peakDate: st.peakDate, dd: st.ddPct.toFixed(2),
+        }));
+    ddTxt += "<br/>" + (st.ddFired.length
+      ? T("live.dd.fired", { lvs: st.ddFired.map((lv) => `-${lv}%`).join("/") })
+      : T("live.dd.none"));
     $("ddStatus").innerHTML = ddTxt;
 
     // 减仓模块顶部：有效底部是否还属于本轮，决定触发价有没有参考价值
     let rbTxt;
     if (stale) {
       const need = st.peak * (1 - BT.TROUGH_TRIGGER_PCT / 100.0);
-      rbTxt = `${head}<br/>有效底部 ${fmtPrice(st.activeTrough)}（${st.troughDate}）`
-        + `<b>来自上一轮下跌</b>，现价已高出 <b>${st.rbPct.toFixed(2)}%</b>`
-        + `——下方减仓触发价当前不适用`
-        + `<br/>└ 需先自峰值回撤超过 ${BT.TROUGH_TRIGGER_PCT.toFixed(0)}% 跌出新底部`
-        + `（即跌破 ${fmtPrice(need)}），减仓档位才会重新计时`;
+      rbTxt = head + "<br/>" + T("live.rb.stale", {
+        trough: fmtPrice(st.activeTrough), troughDate: st.troughDate,
+        rb: st.rbPct.toFixed(2), trig: BT.TROUGH_TRIGGER_PCT.toFixed(0),
+        need: fmtPrice(need),
+      });
     } else {
-      rbTxt = st.rbPct <= 0
-        ? `${head}<br/>${src.na} 现价 <b>${fmtPrice(st.latestPrice)}</b>`
-          + `，正处本轮有效底部（${st.troughDate}），较底部涨幅 <b>0.00%</b>`
-        : `${head}<br/>${src.na} 现价 <b>${fmtPrice(st.latestPrice)}</b>`
-          + `，较本轮有效底部 ${fmtPrice(st.activeTrough)}（${st.troughDate}）`
-          + `涨幅 <b>${st.rbPct.toFixed(2)}%</b>`;
-      rbTxt += st.rbFired.length
-        ? `<br/>└ ${st.rbFired.map((lv) => `+${lv}%`).join("/")} 档对该底部已触发过，`
-          + `本轮不会再次减仓；其余档位触发价仍然有效`
-        : `<br/>└ 各档均未触发，下方触发价全部有效`;
+      rbTxt = head + "<br/>" + (st.rbPct <= 0
+        ? T("live.rb.atTrough", {
+            na: src.na, price: fmtPrice(st.latestPrice), troughDate: st.troughDate,
+          })
+        : T("live.rb.above", {
+            na: src.na, price: fmtPrice(st.latestPrice),
+            trough: fmtPrice(st.activeTrough), troughDate: st.troughDate,
+            rb: st.rbPct.toFixed(2),
+          }));
+      rbTxt += "<br/>" + (st.rbFired.length
+        ? T("live.rb.fired", { lvs: st.rbFired.map((lv) => `+${lv}%`).join("/") })
+        : T("live.rb.none"));
     }
     $("rbStatus").innerHTML = rbTxt;
 
@@ -403,13 +411,13 @@
       const gap = ((st.latestPrice - tp) / st.latestPrice) * 100.0;
       if (ddFired.has(lv)) {
         el.className = "trig fired";
-        el.innerHTML = `本轮已触发（${fmtPrice(tp)}）<br/>须创新高后才重置`;
+        el.innerHTML = T("trig.dd.fired", { price: fmtPrice(tp) });
       } else if (gap <= 0) {
         el.className = "trig hit";
-        el.innerHTML = `跌到 ${fmtPrice(tp)} 补仓<br/>✓ 已达（现价已低于触发价）`;
+        el.innerHTML = T("trig.dd.hit", { price: fmtPrice(tp) });
       } else {
         el.className = "trig";
-        el.innerHTML = `跌到 ${fmtPrice(tp)} 补仓<br/>还需跌 ${gap.toFixed(2)}%`;
+        el.innerHTML = T("trig.dd.wait", { price: fmtPrice(tp), gap: gap.toFixed(2) });
       }
     });
 
@@ -421,16 +429,16 @@
       const gap = ((tp - st.latestPrice) / st.latestPrice) * 100.0;
       if (stale) {
         el.className = "trig stale";
-        el.innerHTML = `暂不适用（${fmtPrice(tp)}）<br/>底部属上一轮，待跌出新底部`;
+        el.innerHTML = T("trig.rb.stale", { price: fmtPrice(tp) });
       } else if (rbFired.has(lv)) {
         el.className = "trig fired";
-        el.innerHTML = `本轮已触发（${fmtPrice(tp)}）<br/>须跌出新底部后才重置`;
+        el.innerHTML = T("trig.rb.fired", { price: fmtPrice(tp) });
       } else if (gap <= 0) {
         el.className = "trig hit";
-        el.innerHTML = `涨到 ${fmtPrice(tp)} 减仓<br/>✓ 已达（现价已高于触发价）`;
+        el.innerHTML = T("trig.rb.hit", { price: fmtPrice(tp) });
       } else {
         el.className = "trig";
-        el.innerHTML = `涨到 ${fmtPrice(tp)} 减仓<br/>还需涨 ${gap.toFixed(2)}%`;
+        el.innerHTML = T("trig.rb.wait", { price: fmtPrice(tp), gap: gap.toFixed(2) });
       }
     });
   }
@@ -523,25 +531,27 @@
   function adviceAddTable(src, st, dd, capA) {
     const lvs = DD.filter((lv) => (dd[lv] || 0) > 0);
     if (!lvs.length) {
-      return `<div class="note">当前补仓参数各档均为 0%，不会再把 ${src.na} 换成 ${src.nb}。</div>`;
+      return `<div class="note">${T("adv.add.allZero", { na: src.na, nb: src.nb })}</div>`;
     }
     const fired = new Set(st.ddFired);
-    let h = '<table class="cmp-tbl"><thead><tr><th>回撤档</th><th>触发价</th><th>距现价</th>'
-      + `<th>买入 ${src.nb}</th><th>剩余 ${src.na}</th></tr></thead><tbody>`;
+    let h = `<table class="cmp-tbl"><thead><tr><th>${T("adv.add.th.level")}</th>`
+      + `<th>${T("adv.th.trigger")}</th><th>${T("adv.th.gap")}</th>`
+      + `<th>${T("adv.add.th.buy", { nb: src.nb })}</th>`
+      + `<th>${T("adv.add.th.left", { na: src.na })}</th></tr></thead><tbody>`;
     let remain = capA;
     lvs.forEach((lv) => {
       const tp = st.ddTriggerPrices[lv];
       if (fired.has(lv)) {
         h += `<tr style="opacity:.55"><td>-${lv}%</td><td>${fmtPrice(tp)}</td>`
-          + '<td colspan="3">本轮已触发过（须创新高后才重置）——进场后不用再等这一档</td></tr>';
+          + `<td colspan="3">${T("adv.add.firedRow")}</td></tr>`;
         return;
       }
       const gap = ((st.latestPrice - tp) / st.latestPrice) * 100;
       const amt = remain * dd[lv] / 100;
       remain -= amt;
       h += `<tr><td>-${lv}%</td><td><b>${fmtPrice(tp)}</b></td>`
-        + `<td>${gap > 0 ? `还需跌 ${gap.toFixed(2)}%` : "✓ 现价已低于该价，可立即执行"}</td>`
-        + `<td><b>${fmtMoney(amt)}</b>（当时 ${src.na} 的 ${dd[lv]}%）</td>`
+        + `<td>${gap > 0 ? T("adv.add.needFall", { gap: gap.toFixed(2) }) : T("adv.add.canNow")}</td>`
+        + `<td><b>${fmtMoney(amt)}</b>${T("adv.amtNote", { k: src.na, p: dd[lv] })}</td>`
         + `<td>${fmtMoney(remain)}</td></tr>`;
     });
     return h + "</tbody></table>";
@@ -551,25 +561,27 @@
   function adviceCutTable(src, st, rb, capB) {
     const lvs = RB.filter((lv) => (rb[lv] || 0) > 0);
     if (!lvs.length) {
-      return `<div class="note">当前减仓参数各档均为 0%，不会把 ${src.nb} 换回 ${src.na}。</div>`;
+      return `<div class="note">${T("adv.cut.allZero", { na: src.na, nb: src.nb })}</div>`;
     }
     const fired = new Set(st.rbFired);
-    let h = '<table class="cmp-tbl"><thead><tr><th>反弹档</th><th>触发价</th><th>距现价</th>'
-      + `<th>卖 ${src.nb} 换回 ${src.na}</th><th>剩余 ${src.nb}</th></tr></thead><tbody>`;
+    let h = `<table class="cmp-tbl"><thead><tr><th>${T("adv.cut.th.level")}</th>`
+      + `<th>${T("adv.th.trigger")}</th><th>${T("adv.th.gap")}</th>`
+      + `<th>${T("adv.cut.th.sell", { na: src.na, nb: src.nb })}</th>`
+      + `<th>${T("adv.cut.th.left", { nb: src.nb })}</th></tr></thead><tbody>`;
     let remain = capB;
     lvs.forEach((lv) => {
       const tp = st.rbTriggerPrices[lv];
       if (fired.has(lv)) {
         h += `<tr style="opacity:.55"><td>+${lv}%</td><td>${fmtPrice(tp)}</td>`
-          + '<td colspan="3">对该底部已触发过（须跌出新底部后才重置）</td></tr>';
+          + `<td colspan="3">${T("adv.cut.firedRow")}</td></tr>`;
         return;
       }
       const gap = ((tp - st.latestPrice) / st.latestPrice) * 100;
       const amt = remain * rb[lv] / 100;
       remain -= amt;
       h += `<tr><td>+${lv}%</td><td><b>${fmtPrice(tp)}</b></td>`
-        + `<td>${gap > 0 ? `还需涨 ${gap.toFixed(2)}%` : "✓ 现价已高于该价，可立即执行"}</td>`
-        + `<td><b>${fmtMoney(amt)}</b>（当时 ${src.nb} 的 ${rb[lv]}%）</td>`
+        + `<td>${gap > 0 ? T("adv.cut.needRise", { gap: gap.toFixed(2) }) : T("adv.cut.canNow")}</td>`
+        + `<td><b>${fmtMoney(amt)}</b>${T("adv.amtNote", { k: src.nb, p: rb[lv] })}</td>`
         + `<td>${fmtMoney(remain)}</td></tr>`;
     });
     return h + "</tbody></table>";
@@ -580,25 +592,30 @@
     const stale = st.troughStale;   // true = 有效底部属上一轮，主线是继续等补仓
     const need = st.peak * (1 - BT.TROUGH_TRIGGER_PCT / 100);
 
-    const addBlk = `<div class="adv-sec">继续下跌时：跌到多少买 ${src.nb}`
-      + `${stale ? "（当前阶段的主线）" : ""}</div>`
+    const mainTag = T("adv.main");
+    const addBlk = `<div class="adv-sec">`
+      + T("adv.sec.add", { nb: src.nb, main: stale ? mainTag : "" })
+      + "</div>"
       + '<div class="note" style="margin-bottom:8px">'
-      + `价格基准是历史最高 ${fmtPrice(st.peak)}（${st.peakDate}），`
-      + "与上方「补仓触发价」完全一致；金额按上面的推荐配比推演（未计中途涨跌）。</div>"
+      + T("adv.add.baseNote", { peak: fmtPrice(st.peak), pd: st.peakDate })
+      + "</div>"
       + adviceAddTable(src, st, dd, capA);
 
-    let cutBlk = `<div class="adv-sec">反弹走高时：涨到多少把 ${src.nb} 换回 ${src.na}`
-      + `${stale ? "" : "（当前阶段的主线）"}</div>`;
+    let cutBlk = `<div class="adv-sec">`
+      + T("adv.sec.cut", { na: src.na, nb: src.nb, main: stale ? "" : mainTag })
+      + "</div>";
     if (stale) {
-      cutBlk += `<div class="note">当前有效底部 ${fmtPrice(st.activeTrough)}`
-        + `（${st.troughDate}）来自上一轮下跌，现价已高出 ${st.rbPct.toFixed(2)}%，`
-        + "减仓档位暂不适用：需先自峰值回撤超过 "
-        + `${BT.TROUGH_TRIGGER_PCT.toFixed(0)}%（跌破 <b>${fmtPrice(need)}</b>）跌出新底部，`
-        + "减仓才重新计时，届时上方「减仓触发价」会按新底部给出具体价格。</div>";
+      cutBlk += `<div class="note">` + T("adv.cut.staleNote", {
+        trough: fmtPrice(st.activeTrough), td: st.troughDate,
+        rb: st.rbPct.toFixed(2), trig: BT.TROUGH_TRIGGER_PCT.toFixed(0),
+        need: fmtPrice(need),
+      }) + "</div>";
     } else {
-      cutBlk += '<div class="note" style="margin-bottom:8px">价格基准是本轮有效底部 '
-        + `${fmtPrice(st.activeTrough)}（${st.troughDate}），`
-        + "与上方「减仓触发价」完全一致；金额按上面的推荐配比推演（未计中途涨跌）。</div>"
+      cutBlk += '<div class="note" style="margin-bottom:8px">'
+        + T("adv.cut.baseNote", {
+            trough: fmtPrice(st.activeTrough), td: st.troughDate,
+          })
+        + "</div>"
         + adviceCutTable(src, st, rb, capB);
     }
     return stale ? addBlk + cutBlk : cutBlk + addBlk;
@@ -610,13 +627,15 @@
     return `<div class="adv-box${best ? " best" : ""}">`
       + `<h3>${title}${tag ? `<span class="tag">${tag}</span>` : ""}</h3>`
       + '<div class="adv-kv">'
-      + `杠杆端初始占比 <span class="big">${r.w}%</span><br/>`
-      + `${src.na}（基准端）买入 <b>${fmtMoney(capA)}</b><br/>`
-      + `${src.nb}（杠杆端）买入 <b>${fmtMoney(capB)}</b><br/>`
-      + `样本中位数终值 <b>${r.medMult.toFixed(2)}×</b>`
-      + `（最差 ${r.worstMult.toFixed(2)}× / 最好 ${r.bestMult.toFixed(2)}×）<br/>`
-      + `中位数最大回撤 <b>${r.medDD.toFixed(1)}%</b>`
-      + `　|　跑赢纯持基准 <b>${(r.winRate * 100).toFixed(0)}%</b>`
+      + `${T("adv.box.wLabel")} <span class="big">${r.w}%</span><br/>`
+      + T("adv.box.buyA", { na: src.na, amt: fmtMoney(capA) }) + "<br/>"
+      + T("adv.box.buyB", { nb: src.nb, amt: fmtMoney(capB) }) + "<br/>"
+      + T("adv.box.med", {
+          m: r.medMult.toFixed(2), w: r.worstMult.toFixed(2), b: r.bestMult.toFixed(2),
+        }) + "<br/>"
+      + T("adv.box.dd", {
+          dd: r.medDD.toFixed(1), wr: (r.winRate * 100).toFixed(0),
+        })
       + "</div></div>";
   }
 
@@ -624,18 +643,18 @@
     let h = '<div class="adv-plan">';
     if (agg.w === bal.w) {
       h += advicePlanBox(
-        "推荐配比",
-        `中位数收益最高，且回撤 ≤ ${ADVICE_SAFE_DD}%`,
+        T("adv.plan.rec"),
+        T("adv.plan.recTag", { dd: ADVICE_SAFE_DD }),
         agg, src, total, true);
     } else {
-      h += advicePlanBox("进取方案", "样本中位数收益最高", agg, src, total, true);
+      h += advicePlanBox(T("adv.plan.agg"), T("adv.plan.aggTag"), agg, src, total, true);
       h += advicePlanBox(
-        "均衡方案", `中位数最大回撤 ≤ ${ADVICE_SAFE_DD}%`, bal, src, total, false);
+        T("adv.plan.bal"), T("adv.plan.balTag", { dd: ADVICE_SAFE_DD }),
+        bal, src, total, false);
     }
     h += "</div>";
     h += '<div class="note" style="margin-bottom:4px">'
-      + `终值倍数 = 持有 ${holdDays} 个交易日后的总资金 ÷ 进场本金；`
-      + "取各样本的中位数，比平均值更不容易被个别极端行情带偏。</div>";
+      + T("adv.plan.note", { n: holdDays }) + "</div>";
     return h;
   }
 
@@ -643,16 +662,18 @@
     const same = agg.w === bal.w;
     const keep = rows.filter((r) => r.w % ADVICE_SHOW_STEP === 0
       || r.w === agg.w || r.w === bal.w);
-    let h = '<div class="adv-sec">各初始配比在历史同阶段样本上的表现</div>'
+    let h = `<div class="adv-sec">${T("adv.tbl.sec")}</div>`
       + '<div class="tbl-wrap"><table class="cmp-tbl"><thead><tr>'
-      + "<th>杠杆端初始占比</th><th>中位数终值</th><th>最差</th><th>最好</th>"
-      + "<th>中位数最大回撤</th><th>跑赢纯持基准</th><th>样本数</th>"
+      + `<th>${T("adv.tbl.th.w")}</th><th>${T("adv.tbl.th.med")}</th>`
+      + `<th>${T("adv.tbl.th.worst")}</th><th>${T("adv.tbl.th.best")}</th>`
+      + `<th>${T("adv.tbl.th.medDD")}</th><th>${T("adv.tbl.th.win")}</th>`
+      + `<th>${T("adv.tbl.th.n")}</th>`
       + "</tr></thead><tbody>";
     keep.forEach((r) => {
       let mark = "";
-      if (same && r.w === agg.w) mark = " ← 推荐";
-      else if (r.w === agg.w) mark = " ← 进取";
-      else if (r.w === bal.w) mark = " ← 均衡";
+      if (same && r.w === agg.w) mark = T("adv.mark.rec");
+      else if (r.w === agg.w) mark = T("adv.mark.agg");
+      else if (r.w === bal.w) mark = T("adv.mark.bal");
       h += `<tr${mark ? ' style="font-weight:700"' : ""}>`
         + `<td>${r.w}%${mark}</td><td>${r.medMult.toFixed(2)}×</td>`
         + `<td>${r.worstMult.toFixed(2)}×</td><td>${r.bestMult.toFixed(2)}×</td>`
@@ -668,7 +689,7 @@
     const st = BT.computeLiveState(src.a, src.b);
     if (!st || !(total > 0)) {
       sub.textContent = "";
-      body.innerHTML = '<div class="note">暂无可用数据或投入资金为 0，无法给出建议。</div>';
+      body.innerHTML = `<div class="note">${T("adv.noData")}</div>`;
       return;
     }
     const pxA = st.latestPrice, pxB = priceOn(src.b, st.latestDate);
@@ -692,32 +713,31 @@
     }
 
     const matchTxt = st.troughStale
-      ? `距峰值跌幅 ${st.ddPct.toFixed(2)}% ±${ADVICE_DD_TOL} 个百分点`
-      : `距有效底部涨幅 ${st.rbPct.toFixed(2)}% ±${ADVICE_RB_TOL} 个百分点`;
+      ? T("adv.match.dd", { p: st.ddPct.toFixed(2), tol: ADVICE_DD_TOL })
+      : T("adv.match.rb", { p: st.rbPct.toFixed(2), tol: ADVICE_RB_TOL });
     const holdYear = (holdDays / 252).toFixed(0);
 
     let html = '<div class="note" style="margin-bottom:10px">'
-      + `以下结论只针对当前选中的 <b>${src.na} / ${src.nb}</b> 组合，回撤/反弹档位取该组合自己的推荐参数，不与其他组合横向比较。`
+      + T("adv.scopeNote", { na: src.na, nb: src.nb })
       + '</div><div class="adv-kv" style="margin-bottom:12px">'
-      + `进场日：<b>${st.latestDate}</b>（数据源最新交易日）`
-      + `　|　进场价：${src.na} <b>${fmtPrice(pxA)}</b>`
-      + (pxB ? `、${src.nb} <b>${fmtPrice(pxB)}</b>` : "")
-      + `<br/>当前阶段：<b>${st.phaseLabel}</b>（${matchTxt}）`
-      + `　|　可投入总资金：<b>${fmtMoney(total)}</b>`
+      + T("adv.kv.entry", { d: st.latestDate, na: src.na, pa: fmtPrice(pxA) })
+      + (pxB ? T("adv.kv.entryB", { nb: src.nb, pb: fmtPrice(pxB) }) : "")
+      + "<br/>"
+      + T("adv.kv.phase", {
+          phase: st.phaseLabel, match: matchTxt, total: fmtMoney(total),
+        })
       + (monthlyPct > 0
-        ? `（另每月定投 <b>${fmtMoney(total * monthlyPct / 100)}</b> 买入 ${src.na}，下表倍数＝终值 / 累计投入）`
+        ? T("adv.kv.dca", { amt: fmtMoney(total * monthlyPct / 100), na: src.na })
         : "")
-      + `<br/>历史同阶段样本：<b>${samples.length}</b> 个进场日`
-      + `，每个样本向后持有 <b>${holdDays}</b> 个交易日（约 ${holdYear} 年）后结算`
+      + "<br/>"
+      + T("adv.kv.samples", { n: samples.length, d: holdDays, y: holdYear })
       + "</div>";
 
     if (rows.length === 0) {
-      sub.textContent = "（历史同阶段样本不足，仅给规则型提示）";
-      html += '<div class="note">当前阶段在历史数据里出现得太少（可匹配样本 '
-        + `${samples.length} 个，少于 ${ADVICE_MIN_SAMPLES} 个），`
-        + "按样本择优会严重过拟合，故不给出具体配比。"
-        + "可退一步按策略本身的逻辑执行：此刻先全额买入基准端，"
-        + "把杠杆端额度留到下方各档补仓价再投入。</div>";
+      sub.textContent = T("adv.sub.few");
+      html += `<div class="note">`
+        + T("adv.few.note", { n: samples.length, min: ADVICE_MIN_SAMPLES })
+        + "</div>";
       html += renderAdviceActions(src, st, dd, rb, total, 0);
       body.innerHTML = html;
       return;
@@ -731,7 +751,7 @@
       ? safePool.slice().sort((x, y) => y.medMult - x.medMult)[0]
       : rows.slice().sort((x, y) => x.medDD - y.medDD)[0];
 
-    sub.textContent = `（基于 ${samples.length} 个历史同阶段样本）`;
+    sub.textContent = T("adv.sub.based", { n: samples.length });
     html += renderAdvicePlans(src, aggressive, balanced, total, holdDays);
     html += renderAdviceTable(rows, aggressive, balanced);
     const recW = aggressive.w;
@@ -743,11 +763,11 @@
     const body = $("adviceBody");
     if (!body) return;
     $("adviceSub").textContent = "";
-    body.innerHTML = '<div class="note">正在用历史同阶段样本检验各档配比…</div>';
+    body.innerHTML = `<div class="note">${T("adv.computing")}</div>`;
     // 计算量较大（样本 × 占比档位次回测），放到下一帧避免阻塞首屏渲染
     setTimeout(function () {
       try { buildAdvice(src, dd, rb, total, monthlyPct || 0); }
-      catch (e) { body.innerHTML = `<div class="note">建议计算失败：${e.message}</div>`; }
+      catch (e) { body.innerHTML = `<div class="note">${T("adv.failed", { e: e.message })}</div>`; }
     }, 0);
   }
 
@@ -773,7 +793,7 @@
         drawdowns: dd, rebounds: rb, startDate, endDate, monthlyPct,
       });
     } catch (e) {
-      alert("回测失败：" + e.message);
+      alert(T("run.failed", { e: e.message }));
       return;
     }
     lastResult = { res, src };
@@ -801,22 +821,22 @@
     if (!m) return;
     const excess = m.finalTotal - base.finalTotal;
     const cards = hasFlow ? [
-      { k: "最终总资金", v: fmtMoney(m.finalTotal) },
-      { k: "累计投入", v: fmtMoney(m.invested) },
-      { k: "净盈亏", v: (m.profit >= 0 ? "+" : "") + fmtMoney(m.profit), cls: m.profit >= 0 ? "pos" : "neg" },
-      { k: "XIRR 资金加权年化", v: m.xirr === null ? "—" : fmtPct(m.xirr), cls: (m.xirr || 0) >= 0 ? "pos" : "neg" },
-      { k: "TWR 年化", v: fmtPct(m.twrCagr), cls: m.twrCagr >= 0 ? "pos" : "neg" },
-      { k: "最大回撤", v: fmtPct(m.maxDD), cls: "neg" },
-      { k: "夏普(未扣无风险)", v: m.sharpe.toFixed(2) },
-      { k: "最长套牢", v: m.maxUnderwaterDays + " 天" },
-      { k: "vs 50-50不动", v: (excess >= 0 ? "+" : "") + fmtMoney(excess), cls: excess >= 0 ? "pos" : "neg" },
+      { k: T("m.final"), v: fmtMoney(m.finalTotal) },
+      { k: T("m.invested"), v: fmtMoney(m.invested) },
+      { k: T("m.profit"), v: (m.profit >= 0 ? "+" : "") + fmtMoney(m.profit), cls: m.profit >= 0 ? "pos" : "neg" },
+      { k: T("m.xirr"), v: m.xirr === null ? "—" : fmtPct(m.xirr), cls: (m.xirr || 0) >= 0 ? "pos" : "neg" },
+      { k: T("m.twr"), v: fmtPct(m.twrCagr), cls: m.twrCagr >= 0 ? "pos" : "neg" },
+      { k: T("m.maxdd"), v: fmtPct(m.maxDD), cls: "neg" },
+      { k: T("m.sharpe"), v: m.sharpe.toFixed(2) },
+      { k: T("m.underwater"), v: T("m.days", { n: m.maxUnderwaterDays }) },
+      { k: T("m.vs5050"), v: (excess >= 0 ? "+" : "") + fmtMoney(excess), cls: excess >= 0 ? "pos" : "neg" },
     ] : [
-      { k: "最终总资金", v: fmtMoney(m.finalTotal) },
-      { k: "CAGR 年化", v: fmtPct(m.cagr), cls: m.cagr >= 0 ? "pos" : "neg" },
-      { k: "最大回撤", v: fmtPct(m.maxDD), cls: "neg" },
-      { k: "夏普(未扣无风险)", v: m.sharpe.toFixed(2) },
-      { k: "最长套牢", v: m.maxUnderwaterDays + " 天" },
-      { k: "vs 50-50不动", v: (excess >= 0 ? "+" : "") + fmtMoney(excess), cls: excess >= 0 ? "pos" : "neg" },
+      { k: T("m.final"), v: fmtMoney(m.finalTotal) },
+      { k: T("m.cagr"), v: fmtPct(m.cagr), cls: m.cagr >= 0 ? "pos" : "neg" },
+      { k: T("m.maxdd"), v: fmtPct(m.maxDD), cls: "neg" },
+      { k: T("m.sharpe"), v: m.sharpe.toFixed(2) },
+      { k: T("m.underwater"), v: T("m.days", { n: m.maxUnderwaterDays }) },
+      { k: T("m.vs5050"), v: (excess >= 0 ? "+" : "") + fmtMoney(excess), cls: excess >= 0 ? "pos" : "neg" },
     ];
     $("metrics").innerHTML = cards.map((c) =>
       `<div class="metric"><div class="k">${c.k}</div>
@@ -835,10 +855,10 @@
     const on = activeCurves();
     const series = [];
     const defs = [
-      { k: "strategy", name: "动态策略", data: res.equityStrategy, color: "#f85149" },
-      { k: "hold5050", name: "50-50 不动", data: res.equity5050, color: "#8b949e" },
-      { k: "holdA", name: "纯持 " + src.na, data: res.equityHoldA, color: "#1f6feb" },
-      { k: "holdB", name: "纯持 " + src.nb, data: res.equityHoldB, color: "#d29922" },
+      { k: "strategy", name: T("curve.strategy"), data: res.equityStrategy, color: "#f85149" },
+      { k: "hold5050", name: T("curve.hold5050"), data: res.equity5050, color: "#8b949e" },
+      { k: "holdA", name: T("curve.holdOnly", { k: src.na }), data: res.equityHoldA, color: "#1f6feb" },
+      { k: "holdB", name: T("curve.holdOnly", { k: src.nb }), data: res.equityHoldB, color: "#d29922" },
     ];
     defs.forEach((d) => {
       if (!on[d.k]) return;
@@ -857,10 +877,10 @@
       const dateIdx = {};
       res.equityDates.forEach((d, i) => dateIdx[d] = i);
       const markData = res.tradeMarks.map((t) => ({
-        name: t.kind, xAxis: dateIdx[t.date], yAxis: Math.round(t.equity),
-        symbol: t.kind === "补仓" ? "triangle" : "arrow",
-        symbolRotate: t.kind === "补仓" ? 180 : 0,
-        itemStyle: { color: t.kind === "补仓" ? "#f85149" : "#3fb950" },
+        name: T("trade.kind." + t.kind), xAxis: dateIdx[t.date], yAxis: Math.round(t.equity),
+        symbol: t.kind === "add" ? "triangle" : "arrow",
+        symbolRotate: t.kind === "add" ? 180 : 0,
+        itemStyle: { color: t.kind === "add" ? "#f85149" : "#3fb950" },
       }));
       series[0].markPoint = { symbolSize: 10, data: markData, label: { show: false } };
     }
@@ -875,8 +895,8 @@
           // 该日若发生补仓/减仓，附带当日成交价（收盘价即成交价）
           const tr = tradeByDate[ps[0].axisValueLabel];
           if (tr) {
-            const col = tr.kind === "补仓" ? "#f85149" : "#3fb950";
-            s += `<span style="color:${col}">● ${tr.kind}</span> `
+            const col = tr.kind === "add" ? "#f85149" : "#3fb950";
+            s += `<span style="color:${col}">● ${T("trade.kind." + tr.kind)}</span> `
               + `${src.na} ${fmtPrice(tr.priceA)} / ${src.nb} ${fmtPrice(tr.priceB)}<br/>`;
           }
           return s;
@@ -901,20 +921,22 @@
   // ---- 逐笔交易表 ----
   function renderTrades(res, src) {
     // 表头的价格列名随数据源变化（如 SMH 成交价 / SOXL 成交价）
-    $("thPriceA").textContent = `${src.na} 成交价`;
-    $("thPriceB").textContent = `${src.nb} 成交价`;
+    $("thPriceA").textContent = T("trade.th.priceDyn", { k: src.na });
+    $("thPriceB").textContent = T("trade.th.priceDyn", { k: src.nb });
     // 计算每笔成交后总资金：用 tradeMarks 的 equity（与 trades 一一对应）
     // trades 元素为 [日期, 类型, 说明, 基准端成交价, 杠杆端成交价]，
     // 价格即成交当日两标的收盘价（本模型按收盘价换仓）。
     const rows = res.trades.map((t, i) => {
       const eq = res.tradeMarks[i] ? fmtMoney(res.tradeMarks[i].equity) : "-";
-      const cls = t[1] === "补仓" ? "buy" : "sell";
+      const cls = t[1] === "add" ? "buy" : "sell";
       const pa = t[3] != null ? fmtPrice(t[3]) : "-";
       const pb = t[4] != null ? fmtPrice(t[4]) : "-";
-      return `<tr><td>${t[0]}</td><td class="${cls}">${t[1]}</td><td>${t[2]}</td><td>${pa}</td><td>${pb}</td><td>${eq}</td></tr>`;
+      const kind = T("trade.kind." + t[1]);
+      const desc = t[2] && t[2].k ? T(t[2].k, t[2].v) : (t[2] || "");
+      return `<tr><td>${t[0]}</td><td class="${cls}">${kind}</td><td>${desc}</td><td>${pa}</td><td>${pb}</td><td>${eq}</td></tr>`;
     });
-    $("tradeBody").innerHTML = rows.join("") || `<tr><td colspan="6">当前参数下无交易</td></tr>`;
-    $("tradeCount").textContent = `共 ${res.trades.length} 笔`;
+    $("tradeBody").innerHTML = rows.join("") || `<tr><td colspan="6">${T("trade.none")}</td></tr>`;
+    $("tradeCount").textContent = T("trade.count", { n: res.trades.length });
   }
 
   // ---- 组合横向对比（可勾选，各组共用动态统一起点） ----
@@ -952,7 +974,7 @@
     const monthlyPct = monthlyPctNow();
     const groups = checkedCmpGroups();
     if (!groups.length) {
-      $("cmpBody").innerHTML = `<tr><td colspan="9" class="note">未勾选任何组合</td></tr>`;
+      $("cmpBody").innerHTML = `<tr><td colspan="9" class="note">${T("cmp.none")}</td></tr>`;
       $("cmpNote").textContent = "";
       return;
     }
@@ -963,10 +985,10 @@
     // 或用户起点早于某组上市日时兜底用；否则一律尊重用户设定的范围。
     const autoStart = unifiedStart(groups);
     $("cmpNote").textContent = uStart
-      ? `对比区间：${uStart} ~ ${uEnd || "最新"}（按上方设定；某组若上市晚于起点，则从其上市日起算）`
-      : `统一起点：${autoStart}（未设起点，由勾选组合涉及标的的最晚上市日兜底）`;
+      ? T("cmp.rangeUser", { s: uStart, e: uEnd || T("cmp.latest") })
+      : T("cmp.rangeAuto", { s: autoStart });
     if (monthlyPct > 0) {
-      $("cmpNote").textContent += `；已开启每月定投 ${DCA_PCT}%，各组现金流相同，年化列为 XIRR（资金加权）`;
+      $("cmpNote").textContent += T("cmp.dcaNote", { pct: DCA_PCT });
     }
     const rows = groups.map((g) => {
     // 该组的起点 = max(用户起点, 该组自身最晚上市日)；无用户起点时用兜底起点。
@@ -1035,11 +1057,27 @@
       });
     });
     window.addEventListener("resize", () => chart.resize());
+    // 语言切换：回填静态文案 + 重绘动态文案。
+    // 注意不要调 buildInputs()，否则会把用户改过的档位数值重置回推荐值；
+    // 这里只改 label 文本，日期下拉的年/月/日文案由 updateRange() 重填。
+    window.addEventListener("smh:langchange", () => {
+      if (window.I18N) I18N.applyStatic();
+      document.querySelectorAll("#ddRow .field").forEach((f) => {
+        const el = f.querySelector(".dd"), lb = f.querySelector("label");
+        if (el && lb) lb.textContent = T("inp.ddLabel", { lv: el.dataset.lv });
+      });
+      document.querySelectorAll("#rbRow .field").forEach((f) => {
+        const el = f.querySelector(".rb"), lb = f.querySelector("label");
+        if (el && lb) lb.textContent = T("inp.rbLabel", { lv: el.dataset.lv });
+      });
+      updateRange();
+      if (window.__ready) run();
+    });
   }
 
   // ---- 启动 ----
   if (!window.PRICE_DATA) {
-    document.body.innerHTML = "<p style='color:#f85149;padding:40px'>数据未加载：请确认 data.js 存在。</p>";
+    document.body.innerHTML = "<p style='color:#f85149;padding:40px'>" + T("boot.noData") + "</p>";
     return;
   }
   // 初始化两个下拉式日期选择器；用户改动任一段即触发重算(与原生 change 行为一致)

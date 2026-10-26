@@ -19,7 +19,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 echo "==> 拷贝 web 资源到 .app 内部（自包含，脱离源目录也能跑）"
 mkdir -p "$APP/Contents/Resources/web"
 # 只带运行必需文件，排除构建脚本与缓存
-for f in index.html app.js backtest.js data.js serve.py build_data.py; do
+for f in index.html app.js backtest.js i18n.js data.js serve.py build_data.py; do
   cp "$HERE/web/$f" "$APP/Contents/Resources/web/$f"
 done
 

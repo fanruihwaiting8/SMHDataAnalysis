@@ -8,6 +8,12 @@ const TROUGH_TRIGGER_PCT = 25.0;
 // 否则视为仍在"探底"。不参与任何交易判定，与 backtest.py 的同名常量一致。
 const PHASE_REBOUND_PCT = 10.0;
 
+// 文案取自 i18n（i18n.js 先加载）；缺失时回退到键名，保证引擎可独立运行
+function BT_T(key, vars) {
+  if (typeof window !== "undefined" && typeof window.T === "function") return window.T(key, vars);
+  return key;
+}
+
 // 把 window.PRICE_DATA[key] 的 {dates,closes} 转成 {date: close} 映射
 function seriesMap(key) {
   const s = window.PRICE_DATA[key];
@@ -44,23 +50,23 @@ const smhSeries = seriesMap(keyA);
   const smh3Series = seriesMap(keyB);
 
   let allCommon = commonDates(keyA, keyB);
-  if (allCommon.length === 0) throw new Error("两标的没有共同交易日");
+  if (allCommon.length === 0) throw new Error(BT_T("bt.err.noCommon"));
 
   let common = allCommon;
   if (startDate) {
     const c = allCommon.filter((d) => d >= startDate);
-    if (c.length === 0) throw new Error(`起点 ${startDate} 晚于全部数据`);
+    if (c.length === 0) throw new Error(BT_T("bt.err.startLate", { d: startDate }));
     common = c;
   }
   if (endDate) {
     const w = common.filter((d) => d <= endDate);
-    if (w.length === 0) throw new Error(`截止 ${endDate} 早于起始交易日`);
+    if (w.length === 0) throw new Error(BT_T("bt.err.endEarly", { d: endDate }));
     common = w;
   }
 
   const start = common[0], end = common[common.length - 1];
   const p0a = smhSeries[start], p0b = smh3Series[start];
-  if (p0a <= 0 || p0b <= 0) throw new Error("起始日价格异常");
+  if (p0a <= 0 || p0b <= 0) throw new Error(BT_T("bt.err.badPrice"));
 
   let smhShares = capA / p0a;
   let smh3Shares = capB / p0b;
@@ -71,7 +77,8 @@ const smhSeries = seriesMap(keyA);
   const rbFired = new Set();
 
   const trades = [];
-  const troughs = [[start, activeTrough, "建仓日初始底部（反弹点）"]];
+  // 备注存 i18n 机器键，渲染时再翻译
+  const troughs = [[start, activeTrough, "trough.init"]];
   let segActive = false;
   let segLow = null;
 
@@ -141,8 +148,8 @@ const smhSeries = seriesMap(keyA);
           const move = smhValue * ratio;
           smhShares -= move / pa;
           smh3Shares += move / pb;
-          trades.push([date, "补仓", `${keyA}回撤-${lv}%，卖出${keyA}市值${move.toFixed(2)}买入${keyB}`, pa, pb]);
-          tradeMarks.push({ date, kind: "补仓", equity: smhShares * pa + smh3Shares * pb, priceA: pa, priceB: pb });
+          trades.push([date, "add", { k: "trade.desc.add", v: { a: keyA, b: keyB, lv: lv, move: move.toFixed(2) } }, pa, pb]);
+          tradeMarks.push({ date, kind: "add", equity: smhShares * pa + smh3Shares * pb, priceA: pa, priceB: pb });
         }
         ddFired.add(lv);
       }
@@ -153,11 +160,11 @@ const smhSeries = seriesMap(keyA);
         segActive = true;
         activeTrough = segLow;
         rbFired.clear();
-        troughs.push([date, activeTrough, "回撤≥25%区间最低点（反弹点）"]);
+        troughs.push([date, activeTrough, "trough.note"]);
       } else if (segLow < activeTrough) {
         activeTrough = segLow;
         rbFired.clear();
-        troughs[troughs.length - 1] = [date, activeTrough, "回撤≥25%区间最低点（反弹点）"];
+        troughs[troughs.length - 1] = [date, activeTrough, "trough.note"];
       }
     }
 
@@ -174,8 +181,8 @@ const smhSeries = seriesMap(keyA);
           const move = smh3Value * ratio;
           smh3Shares -= move / pb;
           smhShares += move / pa;
-          trades.push([date, "减仓", `${keyA}反弹+${lv}%，卖出${keyB}市值${move.toFixed(2)}买入${keyA}`, pa, pb]);
-          tradeMarks.push({ date, kind: "减仓", equity: smhShares * pa + smh3Shares * pb, priceA: pa, priceB: pb });
+          trades.push([date, "cut", { k: "trade.desc.cut", v: { a: keyA, b: keyB, lv: lv, move: move.toFixed(2) } }, pa, pb]);
+          tradeMarks.push({ date, kind: "cut", equity: smhShares * pa + smh3Shares * pb, priceA: pa, priceB: pb });
         }
         rbFired.add(lv);
       }
@@ -311,10 +318,11 @@ function calcFlowMetrics(dates, equity, flows) {
 // segActive=false 则有效底部来自上一轮，减仓触发价没有实际参考意义。
 // 而在 segActive=true 的这一轮里，ddFired 的档位已经用掉，须创新高才重置。
 function classifyPhase(price, peak, rbPct, segActive) {
-  if (price >= peak) return { phase: "peak", phaseLabel: "创新高" };
-  if (!segActive) return { phase: "pullback", phaseLabel: "高位回调" };
-  if (rbPct < PHASE_REBOUND_PCT) return { phase: "bottoming", phaseLabel: "深度回撤探底" };
-  return { phase: "rebound", phaseLabel: "底部反弹" };
+  // phaseLabel 在调用时按当前语言取词，语言切换后重跑即自动更新
+  if (price >= peak) return { phase: "peak", phaseLabel: BT_T("phase.peak") };
+  if (!segActive) return { phase: "pullback", phaseLabel: BT_T("phase.pullback") };
+  if (rbPct < PHASE_REBOUND_PCT) return { phase: "bottoming", phaseLabel: BT_T("phase.bottoming") };
+  return { phase: "rebound", phaseLabel: BT_T("phase.rebound") };
 }
 
 // ===== 价格基准状态机（唯一实现）=====
