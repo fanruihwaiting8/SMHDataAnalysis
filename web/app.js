@@ -456,6 +456,11 @@
   const ADVICE_DD_TOL = 5;                        // 下跌阶段：跌幅匹配容差(个百分点)
   const ADVICE_RB_TOL = 15;                       // 反弹阶段：涨幅匹配容差(个百分点)
   const ADVICE_TIE_TOL = 0.02;                    // 中位数终值相差 ≤2% 视为并列，取回撤更小者
+  const SIM_WIN = 126;                            // 相似度观察窗口(交易日，≈半年)
+  const SIM_TOP = 3;                              // 展示最相似的历史阶段个数
+  const SIM_GAP = 60;                             // 相似日之间最小间隔(交易日)，避免挑出同一段行情
+  const SIM_RMSE_SCALE = 0.12;                    // 路径偏离度 -> 相似度的衰减尺度(对数收益)
+  const SIM_FWD = [126, 252];                     // 相似日之后观察的区间(半年/一年)
 
   function median(arr) {
     const a = arr.slice().sort((x, y) => x - y), n = a.length;
@@ -661,6 +666,130 @@
     return Math.max(0, Math.min(100, lev));
   }
 
+  // ---- 「历史上哪一天的前半年，走得和最近半年最像」 ----
+  // 做法：把窗口内的收盘价转成「相对窗口首日的对数收益路径」，消掉绝对价位差异，
+  // 再与当下这半年的路径逐点比对：
+  //   corr = 两条路径的相关系数 -> 形状(先跌后涨 / 一路下行 / 高位横盘…)是否吻合
+  //   rmse = 逐点偏离的均方根   -> 涨跌幅度是否也相当
+  // 相似度 = max(0,corr) × exp(-rmse / SIM_RMSE_SCALE)，形状和幅度都像才拿高分。
+  function logPath(closes, end, win) {
+    const s = end - win + 1;
+    if (s < 0) return null;
+    const p0 = closes[s];
+    if (!(p0 > 0)) return null;
+    const v = [];
+    for (let i = s; i <= end; i++) {
+      const p = closes[i];
+      if (!(p > 0)) return null;
+      v.push(Math.log(p / p0));
+    }
+    return v;
+  }
+
+  function corrOf(a, b) {
+    const n = a.length;
+    let ma = 0, mb = 0;
+    for (let i = 0; i < n; i++) { ma += a[i]; mb += b[i]; }
+    ma /= n; mb /= n;
+    let sab = 0, sa = 0, sb = 0;
+    for (let i = 0; i < n; i++) {
+      const da = a[i] - ma, db = b[i] - mb;
+      sab += da * db; sa += da * da; sb += db * db;
+    }
+    if (!(sa > 0) || !(sb > 0)) return 0;
+    return sab / Math.sqrt(sa * sb);
+  }
+
+  // 一个窗口（以 end 结尾、长 win）的概况：半年涨跌幅、窗口内距最高点回撤、之后表现
+  function winStat(closes, dates, end, win, last) {
+    const s = end - win + 1;
+    let hi = closes[s];
+    for (let i = s; i <= end; i++) if (closes[i] > hi) hi = closes[i];
+    return {
+      date: dates[end], startDate: dates[s],
+      chg: (closes[end] / closes[s] - 1) * 100,
+      dd: (closes[end] / hi - 1) * 100,
+      fwd: SIM_FWD.map((n) => {
+        const k = end + n;
+        return k <= last ? (closes[k] / closes[end] - 1) * 100 : null;
+      }),
+    };
+  }
+
+  function similarAnalysis(key, win, topN) {
+    const d = window.PRICE_DATA && window.PRICE_DATA[key];
+    if (!d || !d.closes || d.closes.length < win * 2) return null;
+    const closes = d.closes, dates = d.dates, last = closes.length - 1;
+    const now = logPath(closes, last, win);
+    if (!now) return null;
+    const cand = [];
+    // 候选结束日至少比今天早一个完整窗口，否则会和「最近半年」自身重叠
+    for (let j = win - 1; j <= last - win; j++) {
+      const v = logPath(closes, j, win);
+      if (!v) continue;
+      let se = 0;
+      for (let i = 0; i < win; i++) { const e = v[i] - now[i]; se += e * e; }
+      const rmse = Math.sqrt(se / win);
+      const corr = corrOf(v, now);
+      cand.push({ j, rmse, corr, score: Math.max(0, corr) * Math.exp(-rmse / SIM_RMSE_SCALE) });
+    }
+    if (!cand.length) return null;
+    cand.sort((x, y) => y.score - x.score);
+    const picked = [];
+    for (const c of cand) {
+      // 相邻日期的窗口几乎一样，隔开 SIM_GAP 才算另一段行情
+      if (picked.some((p) => Math.abs(p.j - c.j) < SIM_GAP)) continue;
+      picked.push(c);
+      if (picked.length >= topN) break;
+    }
+    return {
+      now: winStat(closes, dates, last, win, last),
+      list: picked.map((c) => Object.assign(
+        winStat(closes, dates, c.j, win, last),
+        { score: c.score, corr: c.corr, rmse: c.rmse },
+      )),
+    };
+  }
+
+  function fmtSignedPct(v) {
+    if (v === null || v === undefined || !isFinite(v)) return "—";
+    return (v > 0 ? "+" : "") + v.toFixed(1) + "%";
+  }
+
+  function renderAdviceSimilar(src, sim) {
+    let h = `<div class="adv-sec">${T("adv.sim.sec", { win: SIM_WIN })}</div>`;
+    if (!sim || !sim.list.length) return h + `<div class="note">${T("adv.sim.none")}</div>`;
+    h += `<div class="note" style="margin-bottom:8px">${T("adv.sim.note", { na: src.na })}</div>`
+      + '<div class="tbl-wrap"><table class="cmp-tbl"><thead><tr>'
+      + `<th>${T("adv.sim.th.date")}</th><th>${T("adv.sim.th.score")}</th>`
+      + `<th>${T("adv.sim.th.shape")}</th><th>${T("adv.sim.th.gapAvg")}</th>`
+      + `<th>${T("adv.sim.th.chg")}</th>`
+      + `<th>${T("adv.sim.th.dd")}</th><th>${T("adv.sim.th.fwd6")}</th>`
+      + `<th>${T("adv.sim.th.fwd12")}</th>`
+      + "</tr></thead><tbody>";
+    const n = sim.now;
+    h += `<tr style="font-weight:700"><td>${T("adv.sim.nowRow", { d: n.date, s: n.startDate })}</td>`
+      + `<td>—</td><td>—</td><td>—</td><td>${fmtSignedPct(n.chg)}</td><td>${fmtSignedPct(n.dd)}</td>`
+      + `<td>—</td><td>—</td></tr>`;
+    sim.list.forEach((s) => {
+      h += `<tr><td><b>${s.date}</b><br/><span class="note">${T("adv.sim.fromRow", { s: s.startDate })}</span></td>`
+        + `<td><b>${(s.score * 100).toFixed(0)}%</b></td>`
+        + `<td>${(s.corr * 100).toFixed(0)}%</td>`
+        + `<td>${(s.rmse * 100).toFixed(1)}%</td>`
+        + `<td>${fmtSignedPct(s.chg)}</td><td>${fmtSignedPct(s.dd)}</td>`
+        + `<td>${fmtSignedPct(s.fwd[0])}</td><td>${fmtSignedPct(s.fwd[1])}</td></tr>`;
+    });
+    h += "</tbody></table></div>";
+    const best = sim.list[0];
+    h += `<div class="note" style="margin-top:6px">`
+      + T("adv.sim.after", {
+          d: best.date, f6: fmtSignedPct(best.fwd[0]), f12: fmtSignedPct(best.fwd[1]),
+          na: src.na,
+        })
+      + "</div>";
+    return h;
+  }
+
   function renderAdvicePlans(src, rec, total, holdDays, capNote) {
     let h = '<div class="adv-plan">';
     h += advicePlanBox(T("adv.plan.rec"), T("adv.plan.recTag"), rec, src, total, true);
@@ -748,6 +877,7 @@
       html += `<div class="note">`
         + T("adv.few.note", { n: samples.length, min: ADVICE_MIN_SAMPLES })
         + "</div>";
+      html += renderAdviceSimilar(src, similarAnalysis(src.a, SIM_WIN, SIM_TOP));
       html += renderAdviceActions(src, st, dd, rb, total, 0);
       body.innerHTML = html;
       return;
@@ -781,6 +911,7 @@
 
     sub.textContent = T("adv.sub.based", { n: samples.length });
     html += renderAdvicePlans(src, recommended, total, holdDays, capNote);
+    html += renderAdviceSimilar(src, similarAnalysis(src.a, SIM_WIN, SIM_TOP));
     html += renderAdviceTable(rows, recommended, cap);
     const recW = recommended.w;
     html += renderAdviceActions(src, st, dd, rb, total * (100 - recW) / 100, total * recW / 100);
