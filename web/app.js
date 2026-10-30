@@ -455,7 +455,7 @@
   const ADVICE_SAMPLE_GAP = 20;                   // 样本起点最小间隔(交易日)，避免高度重叠
   const ADVICE_DD_TOL = 5;                        // 下跌阶段：跌幅匹配容差(个百分点)
   const ADVICE_RB_TOL = 15;                       // 反弹阶段：涨幅匹配容差(个百分点)
-  const ADVICE_SAFE_DD = 55;                      // 均衡方案可接受的中位数最大回撤上限(%)
+  const ADVICE_TIE_TOL = 0.02;                    // 中位数终值相差 ≤2% 视为并列，取回撤更小者
 
   function median(arr) {
     const a = arr.slice().sort((x, y) => x - y), n = a.length;
@@ -639,29 +639,40 @@
       + "</div></div>";
   }
 
-  function renderAdvicePlans(src, agg, bal, total, holdDays) {
-    let h = '<div class="adv-plan">';
-    if (agg.w === bal.w) {
-      h += advicePlanBox(
-        T("adv.plan.rec"),
-        T("adv.plan.recTag", { dd: ADVICE_SAFE_DD }),
-        agg, src, total, true);
-    } else {
-      h += advicePlanBox(T("adv.plan.agg"), T("adv.plan.aggTag"), agg, src, total, true);
-      h += advicePlanBox(
-        T("adv.plan.bal"), T("adv.plan.balTag", { dd: ADVICE_SAFE_DD }),
-        bal, src, total, false);
+  // 「阶梯自洽占比」：这就是此刻该拿多少杠杆端的上限。
+  // 设想一个人在峰值那天满仓基准端进场，然后严格按上方补仓/减仓参数走到今天：
+  // 本轮已触发的补仓档逐级把基准端换成杠杆端，已触发的减仓档再换回来，
+  // 剩下的基准端是留给后面 -25%/-35%/… 档的弹药，不能在进场当天就花掉。
+  function ladderWeight(st, dd, rb) {
+    const ddFired = new Set(st.ddFired), rbFired = new Set(st.rbFired);
+    let base = 100, lev = 0;
+    DD.forEach((lv) => {
+      if (!ddFired.has(lv) && st.ddPct < lv) return;
+      const amt = base * (dd[lv] || 0) / 100;
+      base -= amt; lev += amt;
+    });
+    if (!st.troughStale) {
+      RB.forEach((lv) => {
+        if (!rbFired.has(lv) && st.rbPct < lv) return;
+        const amt = lev * (rb[lv] || 0) / 100;
+        lev -= amt; base += amt;
+      });
     }
+    return Math.max(0, Math.min(100, lev));
+  }
+
+  function renderAdvicePlans(src, rec, total, holdDays, capNote) {
+    let h = '<div class="adv-plan">';
+    h += advicePlanBox(T("adv.plan.rec"), T("adv.plan.recTag"), rec, src, total, true);
     h += "</div>";
+    if (capNote) h += `<div class="note" style="margin-bottom:8px">${capNote}</div>`;
     h += '<div class="note" style="margin-bottom:4px">'
       + T("adv.plan.note", { n: holdDays }) + "</div>";
     return h;
   }
 
-  function renderAdviceTable(rows, agg, bal) {
-    const same = agg.w === bal.w;
-    const keep = rows.filter((r) => r.w % ADVICE_SHOW_STEP === 0
-      || r.w === agg.w || r.w === bal.w);
+  function renderAdviceTable(rows, rec, cap) {
+    const keep = rows.filter((r) => r.w % ADVICE_SHOW_STEP === 0 || r.w === rec.w);
     let h = `<div class="adv-sec">${T("adv.tbl.sec")}</div>`
       + '<div class="tbl-wrap"><table class="cmp-tbl"><thead><tr>'
       + `<th>${T("adv.tbl.th.w")}</th><th>${T("adv.tbl.th.med")}</th>`
@@ -670,11 +681,10 @@
       + `<th>${T("adv.tbl.th.n")}</th>`
       + "</tr></thead><tbody>";
     keep.forEach((r) => {
-      let mark = "";
-      if (same && r.w === agg.w) mark = T("adv.mark.rec");
-      else if (r.w === agg.w) mark = T("adv.mark.agg");
-      else if (r.w === bal.w) mark = T("adv.mark.bal");
-      h += `<tr${mark ? ' style="font-weight:700"' : ""}>`
+      const over = r.w > cap;
+      const mark = r.w === rec.w
+        ? T("adv.mark.rec") : (over ? T("adv.mark.overCap") : "");
+      h += `<tr${r.w === rec.w ? ' style="font-weight:700"' : (over ? ' style="opacity:.55"' : "")}>`
         + `<td>${r.w}%${mark}</td><td>${r.medMult.toFixed(2)}×</td>`
         + `<td>${r.worstMult.toFixed(2)}×</td><td>${r.bestMult.toFixed(2)}×</td>`
         + `<td>${r.medDD.toFixed(1)}%</td><td>${(r.winRate * 100).toFixed(0)}%</td>`
@@ -743,18 +753,36 @@
       return;
     }
 
-    // 3) 选优：进取 = 中位数终值最高；均衡 = 回撤可接受范围内终值最高
-    const byMult = rows.slice().sort((x, y) => y.medMult - x.medMult);
-    const aggressive = byMult[0];
-    const safePool = rows.filter((r) => r.medDD <= ADVICE_SAFE_DD);
-    const balanced = safePool.length
-      ? safePool.slice().sort((x, y) => y.medMult - x.medMult)[0]
-      : rows.slice().sort((x, y) => x.medDD - y.medDD)[0];
+    // 3) 选优：只取一个，但必须与补仓阶梯自洽。
+    //    先算「阶梯自洽占比」cap——按上方参数走到今天本该有多少在杠杆端；
+    //    再在 0..cap 里挑历史同阶段样本中位数终值最高的那个（并列时取回撤更小）。
+    //    不设这个上限的话，样本期半导体整体上行，中位数收益会随杠杆占比单调递增，
+    //    结论必然退化成「永远 100% 杠杆」——那等于放弃后面的补仓档位，不是优势。
+    const capRaw = ladderWeight(st, dd, rb);
+    const cap = Math.max(0, Math.min(100,
+      Math.round(capRaw / ADVICE_W_STEP) * ADVICE_W_STEP));
+    const pool = rows.filter((r) => r.w <= cap);
+    const usable = pool.length ? pool : rows.filter((r) => r.w === 0);
+    const byMult = usable.slice().sort((x, y) => y.medMult - x.medMult);
+    const top = byMult[0];
+    const tie = usable.filter((r) => r.medMult >= top.medMult * (1 - ADVICE_TIE_TOL));
+    const recommended = tie.slice().sort((x, y) => x.medDD - y.medDD)[0] || top;
+    const full = rows.filter((r) => r.w === 100)[0];
+
+    const firedTxt = st.ddFired.length
+      ? st.ddFired.map((lv) => `-${lv}%`).join("、") : T("adv.cap.none");
+    const capNote = T("adv.cap.note", {
+      cap: cap, rest: 100 - cap, ddp: st.ddPct.toFixed(2), fired: firedTxt,
+      nb: src.nb, na: src.na,
+    }) + (full ? T("adv.cap.full", {
+      m: full.medMult.toFixed(2), dd: full.medDD.toFixed(1),
+      m2: recommended.medMult.toFixed(2), dd2: recommended.medDD.toFixed(1),
+    }) : "");
 
     sub.textContent = T("adv.sub.based", { n: samples.length });
-    html += renderAdvicePlans(src, aggressive, balanced, total, holdDays);
-    html += renderAdviceTable(rows, aggressive, balanced);
-    const recW = aggressive.w;
+    html += renderAdvicePlans(src, recommended, total, holdDays, capNote);
+    html += renderAdviceTable(rows, recommended, cap);
+    const recW = recommended.w;
     html += renderAdviceActions(src, st, dd, rb, total * (100 - recW) / 100, total * recW / 100);
     body.innerHTML = html;
   }
