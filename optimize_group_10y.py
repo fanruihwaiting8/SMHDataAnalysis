@@ -18,6 +18,7 @@
   .venv/bin/python optimize_group_10y.py smh          # 默认最近 10 年
   .venv/bin/python optimize_group_10y.py smh all      # 全量历史窗口
   .venv/bin/python optimize_group_10y.py usd 15y      # 最近 15 年
+  .venv/bin/python optimize_group_10y.py smh all 1    # 全量窗口 + 每月定投 1%
 """
 import sys
 import datetime as _dt
@@ -44,8 +45,13 @@ RB_LEVELS = bt.REBOUND_LEVELS           # [50, 100, 200]
 TROUGH_TRIGGER = bt.TROUGH_TRIGGER_PCT  # 25.0
 
 
-def build_ctx(group_key: str, window: str = "10y"):
-    """window 取 'all'(全量) 或 'Ny'(最近 N 年，如 10y / 15y)。"""
+def build_ctx(group_key: str, window: str = "10y", dca_pct: float = 0.0):
+    """window 取 'all'(全量) 或 'Ny'(最近 N 年，如 10y / 15y)。
+
+    dca_pct > 0 时启用「每月定投」口径：每月第一个共同交易日注入
+    (CAP_A+CAP_B) × dca_pct%，注入额全部买入基准端 A（口径与
+    web/backtest.js、tools/optimize_dca.js 完全一致）。
+    """
     g = GROUPS[group_key]
     sa = bt._load_close_series(g["csv_a"])
     sb = bt._load_close_series(g["csv_b"])
@@ -70,6 +76,19 @@ def build_ctx(group_key: str, window: str = "10y"):
         "total": CAP_A + CAP_B, "label": label,
     }
     ctx["events"] = build_events(ctx["AP"])
+    # 定投口径：预计算「每投入 1 元累计可买到的 A 份额」，
+    # 注入与持仓无关、纯加性，故可在搜索前算一次。
+    ctx["mc"] = (CAP_A + CAP_B) * dca_pct / 100.0
+    ctx["dca_pct"] = dca_pct
+    ucum = [0.0] * ctx["N"]
+    last_month = common[0][:7]
+    for i in range(1, ctx["N"]):
+        ucum[i] = ucum[i - 1]
+        ym = common[i][:7]
+        if ym != last_month:
+            last_month = ym
+            ucum[i] += 1.0 / ctx["AP"][i]
+    ctx["ucum"] = ucum
     return ctx
 
 
@@ -126,16 +145,28 @@ def build_events(AP):
 
 
 def fast_total(ctx, dd_pcts, rb_pcts):
-    """按预计算事件序列做纯计算回测，返回末日总资金。"""
+    """按预计算事件序列做纯计算回测，返回末日总资金。
+
+    定投口径下，每月注入的现金全额买入基准端 A，而「注入份额」本身
+    与持仓无关（只取决于注入日价格），且后续所有调仓都是按比例的线性
+    变换，所以可以把两个事件之间累计的注入份额一次性补到事件发生前，
+    结果与逐日注入完全一致（由 fast_total_slow 对拍验证）。
+    """
     AP, BP = ctx["AP"], ctx["BP"]
     dd_ratio = {lv: p / 100.0 for lv, p in zip(DD_LEVELS, dd_pcts)}
     rb_ratio = {lv: p / 100.0 for lv, p in zip(RB_LEVELS, rb_pcts)}
     a_sh = CAP_A / AP[0]
     b_sh = CAP_B / BP[0]
+    mc = ctx.get("mc", 0.0)
+    ucum = ctx.get("ucum")
+    prev = 0
     for i, kind, lv in ctx["events"]:
         r = dd_ratio[lv] if kind == 0 else rb_ratio[lv]
         if r <= 0:
             continue
+        if mc > 0:
+            a_sh += mc * (ucum[i] - ucum[prev])
+            prev = i
         p, pb = AP[i], BP[i]
         if kind == 0:
             if a_sh > 0:
@@ -147,12 +178,20 @@ def fast_total(ctx, dd_pcts, rb_pcts):
                 move = b_sh * pb * r
                 b_sh -= move / pb
                 a_sh += move / p
+    if mc > 0:
+        a_sh += mc * (ucum[-1] - ucum[prev])
     return a_sh * AP[-1] + b_sh * BP[-1]
 
 
 def fast_total_slow(ctx, dd_pcts, rb_pcts):
-    """内联纯计算回测（逻辑同 backtest.run_backtest），返回末日总资金。"""
+    """内联纯计算回测（逻辑同 backtest.run_backtest），返回末日总资金。
+
+    定投口径下严格逐日注入，用于和 fast_total 的事件级实现对拍。
+    """
     AP, BP, N = ctx["AP"], ctx["BP"], ctx["N"]
+    YM = [d[:7] for d in ctx["common"]]
+    mc = ctx.get("mc", 0.0)
+    last_month = YM[0]
     dd_ratio = {lv: p / 100.0 for lv, p in zip(DD_LEVELS, dd_pcts)}
     rb_ratio = {lv: p / 100.0 for lv, p in zip(RB_LEVELS, rb_pcts)}
     a_sh = CAP_A / AP[0]
@@ -163,6 +202,9 @@ def fast_total_slow(ctx, dd_pcts, rb_pcts):
     seg_active, seg_low = False, None
     for i in range(1, N):
         p, pb = AP[i], BP[i]
+        if mc > 0 and YM[i] != last_month:
+            last_month = YM[i]
+            a_sh += mc / p
         if p > peak:
             peak = p
             dd_fired.clear()
@@ -227,11 +269,12 @@ def search_rb(ctx, dd_pcts, rb_ranges):
 def main():
     group_key = (sys.argv[1] if len(sys.argv) > 1 else "smh").lower()
     window = (sys.argv[2] if len(sys.argv) > 2 else "10y").lower()
+    dca_pct = float(sys.argv[3]) if len(sys.argv) > 3 else 0.0
     if group_key not in GROUPS:
         print(f"未知分组 {group_key}，可选: {list(GROUPS)}")
         sys.exit(1)
 
-    ctx = build_ctx(group_key, window)
+    ctx = build_ctx(group_key, window, dca_pct)
     g, common, N = ctx["g"], ctx["common"], ctx["N"]
     AP, BP, total = ctx["AP"], ctx["BP"], ctx["total"]
     na, nb_ = g["name_a"], g["name_b"]
@@ -242,6 +285,8 @@ def main():
     print(f"全量数据: {ctx['all_common'][0]} -> {ctx['all_common'][-1]}")
     print(f"{ctx['label']}: {common[0]} -> {common[-1]}  共 {N} 个交易日")
     print(f"初始资金: {na} {CAP_A:,.0f} + {nb_} {CAP_B:,.0f} = {total:,.0f}")
+    if dca_pct > 0:
+        print(f"月度定投: {dca_pct}% = 每月 {ctx['mc']:,.0f} 全额买入 {na}")
     print(f"{na}  {common[0]}={AP[0]:.4f} -> {common[-1]}={AP[-1]:.4f} "
           f"(×{AP[-1] / AP[0]:.2f})")
     print(f"{nb_} {common[0]}={BP[0]:.4f} -> {common[-1]}={BP[-1]:.4f} "
@@ -250,6 +295,10 @@ def main():
     hold_a = total / AP[0] * AP[-1]
     hold_b = total / BP[0] * BP[-1]
     fixed = (total / 2) / AP[0] * AP[-1] + (total / 2) / BP[0] * BP[-1]
+    if dca_pct > 0:
+        # 同样现金流下的对照：定投额全额买入 A，不做任何调仓
+        fixed = fast_total(ctx, [0] * 5, [0] * 3)
+        hold_a = total / AP[0] * AP[-1] + ctx["mc"] * ctx["ucum"][-1] * AP[-1]
     print("\n----- 基准对照（不做任何策略）-----")
     print(f"  全程持 {na} : {hold_a:,.0f}")
     print(f"  全程持 {nb_}: {hold_b:,.0f}")
@@ -295,6 +344,12 @@ def main():
 
     dd = {lv: p for lv, p in zip(DD_LEVELS, c4)}
     rb = {lv: p for lv, p in zip(RB_LEVELS, r3b)}
+    if dca_pct > 0:
+        # bt.run_backtest 只支持一次性投入口径，定投口径下跳过调仓明细，
+        # 改用逐日实现对拍校验事件级结果。
+        v_slow = fast_total_slow(ctx, c4, r3b)
+        print(f"\n逐日实现对拍: {v_slow:,.2f}  差值 {abs(v_slow - v4):,.6f}")
+        return
     res = bt.run_backtest(CAP_A, CAP_B, dd, rb, g["csv_a"], g["csv_b"],
                           start_date=ctx["start_date"])
     print(f"\n----- 调仓明细（共 {len(res['trades'])} 笔）-----")
