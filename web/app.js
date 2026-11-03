@@ -1047,6 +1047,20 @@
       series[0].markPoint = { symbolSize: 10, data: markData, label: { show: false } };
     }
 
+    // 累计投入成本线（虚线）：一次性口径恒为初始本金；定投口径逐月台阶上移。
+    // res.flows 与 equityDates 对齐（flows[0]=初始本金，其后为当日注入额），直接前缀和即可。
+    // 作用：曲线跌破此线即账面浮亏，回升穿越此线即「回本」，可直观读出回本时间点。
+    if (on.cost && res.flows && res.flows.length === res.equityDates.length) {
+      let acc = 0;
+      const costData = res.flows.map((f) => { acc += (f || 0); return Math.round(acc); });
+      series.push({
+        name: T("curve.cost"), type: "line", showSymbol: false, smooth: false,
+        lineStyle: { width: 1.4, color: "#a371f7", type: "dashed" },
+        itemStyle: { color: "#a371f7" },
+        z: 1, data: costData,
+      });
+    }
+
     chart.setOption({
       backgroundColor: "transparent",
       tooltip:{
@@ -1054,6 +1068,16 @@
         formatter: (ps) => {
           let s = ps[0].axisValueLabel + "<br/>";
           ps.forEach((p) => { s += `${p.marker}${p.seriesName}: $${(+p.value).toLocaleString()}<br/>`; });
+          // 同时显示策略与成本线时，附带当日相对累计投入的浮盈/浮亏，便于判断是否已回本
+          const pc = ps.find((p) => p.seriesName === T("curve.cost"));
+          const pst = ps.find((p) => p.seriesName === T("curve.strategy"));
+          if (pc && pst) {
+            const diff = (+pst.value) - (+pc.value);
+            const col = diff >= 0 ? "#3fb950" : "#f85149";
+            const pct = (+pc.value) > 0 ? ` (${diff >= 0 ? "+" : ""}${(diff / (+pc.value) * 100).toFixed(1)}%)` : "";
+            s += `<span style="color:${col}">${T("curve.pnl")}: ${diff >= 0 ? "+" : "-"}$`
+              + `${Math.abs(Math.round(diff)).toLocaleString()}${pct}</span><br/>`;
+          }
           // 该日若发生补仓/减仓，附带当日成交价（收盘价即成交价）
           const tr = tradeByDate[ps[0].axisValueLabel];
           if (tr) {
