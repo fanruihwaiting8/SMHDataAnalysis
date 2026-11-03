@@ -1,4 +1,4 @@
-// 定投版参数网格搜索（最近 10 年窗口，末日总资金最大化）
+// 定投版参数网格搜索（可选窗口，末日总资金最大化）
 //
 // 与 optimize_group_10y.py 同一套分阶段搜索流程，区别只在于支持
 // 「每月定投注入起始总资金的 N%」。注入口径与 web/backtest.js 完全一致：
@@ -7,8 +7,8 @@
 // 用 JavaScriptCore 跑（比纯 Python 循环快一个量级），需在 web/ 目录下执行：
 //   cd web
 //   /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc \
-//     ../tools/optimize_dca.js -- SMH 2
-// 参数：组合键(SMH|QQQ|USD) 每月注入占起始资金百分比(0 表示一次性投入)
+//     ../tools/optimize_dca.js -- SMH 1 all
+// 参数：组合键(SMH|QQQ|USD) 每月注入占起始资金百分比(0 表示一次性投入) 窗口(all|10y，默认 all)
 //
 // monthlyPct=0 时结果应能复现 app.js 里现有的一次性推荐参数，可作正确性校验。
 
@@ -27,15 +27,21 @@ function series(k) {
   return m;
 }
 
-function buildCtx(ka, kb) {
+function buildCtx(ka, kb, win) {
   var sa = series(ka), sb = series(kb);
   var ad = window.PRICE_DATA[ka].dates, bd = window.PRICE_DATA[kb].dates;
   var setB = {};
   for (var i = 0; i < bd.length; i++) setB[bd[i]] = 1;
   var all = ad.filter(function (d) { return setB[d]; }).sort();
   var last = all[all.length - 1];
-  var cut = (parseInt(last.slice(0, 4), 10) - 10) + last.slice(4);
-  var common = all.filter(function (d) { return d >= cut; });
+  var common;
+  if (win === 'all') {
+    common = all;
+  } else {
+    var yrs = parseInt(win, 10) || 10;
+    var cut = (parseInt(last.slice(0, 4), 10) - yrs) + last.slice(4);
+    common = all.filter(function (d) { return d >= cut; });
+  }
   var AP = [], BP = [], YM = [];
   for (var j = 0; j < common.length; j++) {
     AP.push(sa[common[j]]); BP.push(sb[common[j]]); YM.push(common[j].slice(0, 7));
@@ -115,14 +121,16 @@ function show(lvs, arr) {
 var argv = (typeof arguments !== 'undefined') ? arguments : [];
 var key = (argv[0] || 'SMH').toUpperCase();
 var mpct = argv.length > 1 ? parseFloat(argv[1]) : 1;
+var win = argv.length > 2 ? String(argv[2]).toLowerCase() : 'all';
 var g = GROUPS[key];
 if (!g) { print('未知组合 ' + key); } else {
-  var c = buildCtx(g[0], g[1]);
+  var c = buildCtx(g[0], g[1], win);
+  var winLabel = (win === 'all') ? '全量窗口' : (parseInt(win, 10) || 10) + ' 年窗口';
   var total = CAP_A + CAP_B;
   var mc = total * mpct / 100.0;
 
   print('='.repeat(64));
-  print(g[0] + ' / ' + g[1] + '  10 年窗口 ' + c.common[0] + ' ~ ' +
+  print(g[0] + ' / ' + g[1] + '  ' + winLabel + ' ' + c.common[0] + ' ~ ' +
         c.common[c.N - 1] + '（' + c.N + ' 个交易日）');
   print('起始资金 ' + fm(total) + '（' + g[0] + ' ' + fm(CAP_A) + ' + ' + g[1] + ' ' + fm(CAP_B) + '）');
   print('月度定投 ' + mpct + '% = 每月 ' + fm(mc) + ' 全额买入 ' + g[0]);
@@ -147,7 +155,7 @@ if (!g) { print('未知组合 ' + key); } else {
   print('[4] 收敛补仓 ' + show(DD, s4.c) + '  -> ' + fm(s4.v));
 
   print('-'.repeat(64));
-  print('RESULT ' + key + ' monthlyPct=' + mpct);
+  print('RESULT ' + key + ' monthlyPct=' + mpct + ' window=' + win);
   print('dd: { ' + DD.map(function (lv, i) { return lv + ': ' + s4.c[i]; }).join(', ') + ' }');
   print('rb: { ' + RB.map(function (lv, i) { return lv + ': ' + s3b.c[i]; }).join(', ') + ' }');
   print('final=' + fm(s4.v) + '  vs 不调仓=' + fm(holdA));

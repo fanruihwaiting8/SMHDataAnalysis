@@ -21,6 +21,9 @@ result/
 *.png
 *.bak
 *.unusable
+Input_backup_*/
+_tmp_*.py
+_probe_*.py
 
 # ===== 编辑器 / 系统 =====
 .DS_Store

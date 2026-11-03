@@ -30,19 +30,19 @@ GROUPS = {
     "SMH": {
         "csv_a": "SMH_full_history.csv", "csv_b": "SOXL_full_history.csv",
         "name_a": "SMH", "name_b": "SOXL",
-        "dd": {15: 0, 25: 0, 35: 100, 45: 0, 50: 0},
+        "dd": {15: 0, 25: 45, 35: 100, 45: 0, 50: 0},
         "rb": {50: 0, 100: 0, 200: 100},
     },
     "QQQ": {
         "csv_a": "QQQ_full_history.csv", "csv_b": "TQQQ_full_history.csv",
         "name_a": "QQQ", "name_b": "TQQQ",
-        "dd": {15: 60, 25: 0, 35: 100, 45: 0, 50: 0},
+        "dd": {15: 90, 25: 0, 35: 100, 45: 0, 50: 0},
         "rb": {50: 0, 100: 100, 200: 0},
     },
     "USD": {
         "csv_a": "SMH_full_history.csv", "csv_b": "USD_full_history.csv",
         "name_a": "SMH", "name_b": "USD",
-        "dd": {15: 0, 25: 45, 35: 100, 45: 0, 50: 0},
+        "dd": {15: 0, 25: 80, 35: 95, 45: 100, 50: 0},
         "rb": {50: 0, 100: 0, 200: 100},
     },
 }
