@@ -324,6 +324,14 @@
     return "$" + Math.round(v).toLocaleString("en-US");
   }  function fmtPct(v) { return (v * 100).toFixed(1) + "%"; }
 
+  // 累计涨跌幅可能是上万倍（如 10 年 +100000%），大数字加千分位并省略小数，便于阅读
+  function fmtBigPct(v) {
+    const p = v * 100;
+    return Math.abs(p) >= 1000
+      ? Math.round(p).toLocaleString("en-US") + "%"
+      : p.toFixed(1) + "%";
+  }
+
   // ---- 更新数据源可选日期范围提示 ----
   // resetDates=true 时（如切换数据源）强制把起止日对齐到新区间的两端，
   // 否则切到区间更宽的组合时旧的较晚日期不会被重置，看起来像"没生效"。
@@ -982,10 +990,20 @@
       : BT.calcMetrics(res.equityDates, res.equity5050);
     if (!m) return;
     const excess = m.finalTotal - base.finalTotal;
+    // 相对本金的总涨跌幅：最终总资金 ÷ 累计投入 − 1。
+    // 定投口径下分母是累计投入（含每月注入），与「净盈亏」同口径，不会把注入当收益。
+    const investedAll = hasFlow ? m.invested : (res.totalInvested || res.equityStrategy[0]);
+    const totalRet = investedAll > 0 ? m.finalTotal / investedAll - 1 : 0;
+    const retCard = {
+      k: T("m.totalReturn"),
+      v: (totalRet >= 0 ? "+" : "") + fmtBigPct(totalRet),
+      cls: totalRet >= 0 ? "pos" : "neg",
+    };
     const cards = hasFlow ? [
       { k: T("m.final"), v: fmtMoney(m.finalTotal) },
       { k: T("m.invested"), v: fmtMoney(m.invested) },
       { k: T("m.profit"), v: (m.profit >= 0 ? "+" : "") + fmtMoney(m.profit), cls: m.profit >= 0 ? "pos" : "neg" },
+      retCard,
       { k: T("m.xirr"), v: m.xirr === null ? "—" : fmtPct(m.xirr), cls: (m.xirr || 0) >= 0 ? "pos" : "neg" },
       { k: T("m.twr"), v: fmtPct(m.twrCagr), cls: m.twrCagr >= 0 ? "pos" : "neg" },
       { k: T("m.maxdd"), v: fmtPct(m.maxDD), cls: "neg" },
@@ -995,6 +1013,7 @@
     ] : [
       { k: T("m.final"), v: fmtMoney(m.finalTotal) },
       { k: T("m.cagr"), v: fmtPct(m.cagr), cls: m.cagr >= 0 ? "pos" : "neg" },
+      retCard,
       { k: T("m.maxdd"), v: fmtPct(m.maxDD), cls: "neg" },
       { k: T("m.sharpe"), v: m.sharpe.toFixed(2) },
       { k: T("m.underwater"), v: T("m.days", { n: m.maxUnderwaterDays }) },
