@@ -486,8 +486,11 @@
         return;
       }
       el.innerHTML = T("hist.rb", {
-        nb: src.nb, n: s.n,
+        na: src.na, nb: src.nb, n: s.n,
         avg: fmtBigPct(s.avgB / 100),
+        // {m}: 本金倍数（1 + 涨幅），和 {x}「相对基准端涨幅的倍数」是两件事，
+        // 文案里必须同时给出，否则「平均涨 1315%、约 6.5 倍」看起来自相矛盾。
+        m: (1 + s.avgB / 100).toFixed(1),
         min: fmtBigPct(s.minB / 100),
         max: fmtBigPct(s.maxB / 100),
         x: s.avgRatio.toFixed(1),
@@ -526,10 +529,13 @@
         return;
       }
       el.innerHTML = T("hist.dd", {
-        nb: src.nb, n: s.n,
-        avg: "-" + s.avgB.toFixed(0) + "%",
-        min: "-" + s.minB.toFixed(0) + "%",
-        max: "-" + s.maxB.toFixed(0) + "%",
+        na: src.na, nb: src.nb, n: s.n,
+        // 文案里已有「跌 / fell」，数值不再带负号，避免「平均跌 -44%」这种双重否定
+        avg: s.avgB.toFixed(0) + "%",
+        // {m}: 跌完后本金还剩多少（1 - 跌幅），与 {x}「相对基准端跌幅的倍数」区分开
+        m: Math.max(0, 100 - s.avgB).toFixed(0) + "%",
+        min: s.minB.toFixed(0) + "%",
+        max: s.maxB.toFixed(0) + "%",
         x: s.avgRatio.toFixed(1),
       });
       // 悬停看每一次的峰值日 -> 达标日与当次跌幅
