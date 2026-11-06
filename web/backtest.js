@@ -509,8 +509,69 @@ function reboundLeverageStats(keyA, keyB, onlyReal) {
   return out;
 }
 
+// ===== 历史同档补仓时，杠杆端跌了多少 =====
+// 与 reboundLeverageStats 对称：回答「基准端(如 SMH)自历史高点回撤 -35%、我该补仓的
+// 那一刻，杠杆端(如 SOXL)已经跌了多少」。做法同样复用 replayState，逐日监听各补仓档
+// 首次达标的那一天，取「同一峰值日 -> 达标日」区间内杠杆端的跌幅。
+//
+// 口径说明：
+// · 创新高时引擎会清空 ddFired，同一档可在不同峰值各统计一次；
+// · onlyReal=true 剔除「数据首日那个兜底峰值」产生的伪样本——真正的峰值可能在数据
+//   起点之前，从首日起算会低估跌幅；
+// · 跌幅为正数表示下跌，杠杆端用两端收盘价直接算，含日度复利损耗（跌幅通常明显
+//   大于名义倍数 × 基准端跌幅）。
+function drawdownLeverageStats(keyA, keyB, onlyReal) {
+  const sa = seriesMap(keyA), sb = seriesMap(keyB);
+  const all = commonDates(keyA, keyB);
+  const firstDate = all.length ? all[0] : null;
+  const only = onlyReal !== false;
+  const samples = {};
+  for (const lv of DRAWDOWN_LEVELS) samples[lv] = [];
+
+  let curPeak = null;
+  let seen = new Set();
+  const st = replayState(keyA, keyB, function (d) {
+    // 峰值换了(创新高)就重新计数，与引擎清空 ddFired 的时点一致
+    if (d.peakDate !== curPeak) { curPeak = d.peakDate; seen = new Set(); }
+    for (const lv of DRAWDOWN_LEVELS) {
+      if (!d.ddFired.has(lv) || seen.has(lv)) continue;
+      seen.add(lv);
+      if (only && d.peakDate === firstDate) continue;
+      const a0 = sa[d.peakDate], b0 = sb[d.peakDate], b1 = sb[d.date];
+      if (!(a0 > 0) || !(b0 > 0) || !(b1 > 0)) continue;
+      const dropA = (1 - d.price / a0) * 100.0;
+      const dropB = (1 - b1 / b0) * 100.0;
+      if (!(dropA > 0)) continue;
+      samples[lv].push({
+        peakDate: d.peakDate, date: d.date,
+        dropA, dropB, ratio: dropB / dropA,
+        days: Math.round((new Date(d.date) - new Date(d.peakDate)) / 86400000),
+      });
+    }
+  });
+  if (!st) return null;
+
+  const out = {};
+  for (const lv of DRAWDOWN_LEVELS) {
+    const s = samples[lv];
+    if (!s.length) { out[lv] = { level: lv, n: 0, samples: [] }; continue; }
+    const db = s.map((x) => x.dropB);
+    const avg = db.reduce((a, b) => a + b, 0) / db.length;
+    const sorted = db.slice().sort((x, y) => x - y);
+    const mid = Math.floor(sorted.length / 2);
+    out[lv] = {
+      level: lv, n: s.length, samples: s,
+      avgB: avg, minB: sorted[0], maxB: sorted[sorted.length - 1],
+      medianB: sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2,
+      avgRatio: s.reduce((a, x) => a + x.ratio, 0) / s.length,
+    };
+  }
+  return out;
+}
+
 window.SMH_BT = {
   runBacktest, calcMetrics, calcFlowMetrics, commonDates, computeLiveState,
-  classifyPhase, replayState, phaseTimeline, seriesMap, reboundLeverageStats,
+  classifyPhase, replayState, phaseTimeline, seriesMap,
+  reboundLeverageStats, drawdownLeverageStats,
   DRAWDOWN_LEVELS, REBOUND_LEVELS, TROUGH_TRIGGER_PCT, PHASE_REBOUND_PCT,
 };

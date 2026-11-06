@@ -377,6 +377,9 @@ Object.assign(window.I18N.zh, {
   "hist.rb": "历史同档 {n} 次<br/>{nb} 平均涨 <b>{avg}</b>（{min}~{max}，约 {x} 倍）",
   "hist.rb.none": "历史上该档从未触发过<br/>暂无 {nb} 涨幅参照",
   "hist.rb.title": "历史上 {na} 自有效底部反弹 +{lv}% 的那一天，{nb} 自同一底部日算起的涨幅：",
+  "hist.dd": "历史同档 {n} 次<br/>{nb} 平均跌 <b>{avg}</b>（{min}~{max}，约 {x} 倍）",
+  "hist.dd.none": "历史上该档从未触发过<br/>暂无 {nb} 跌幅参照",
+  "hist.dd.title": "历史上 {na} 自历史高点回撤 -{lv}% 的那一天，{nb} 自同一峰值日算起的跌幅：",
 });
 Object.assign(window.I18N.en, {
   "live.head": "As of {date} | current phase: <b>{phase}</b>",
@@ -399,6 +402,9 @@ Object.assign(window.I18N.en, {
   "hist.rb": "{n} past occurrence(s)<br/>{nb} gained <b>{avg}</b> on average ({min}~{max}, ≈{x}x)",
   "hist.rb.none": "This level has never fired<br/>No {nb} reference yet",
   "hist.rb.title": "On the day {na} rebounded +{lv}% off its active bottom, this is how much {nb} had gained from that same bottom date:",
+  "hist.dd": "{n} past occurrence(s)<br/>{nb} fell <b>{avg}</b> on average ({min}~{max}, ≈{x}x)",
+  "hist.dd.none": "This level has never fired<br/>No {nb} reference yet",
+  "hist.dd.title": "On the day {na} was -{lv}% off its all-time high, this is how much {nb} had fallen from that same peak date:",
 });
 
 /* ---------- 进场建议：清单表 ---------- */

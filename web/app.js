@@ -159,7 +159,8 @@
     $("ddRow").innerHTML = DD.map((lv) =>
       `<div class="field"><label>${T("inp.ddLabel", { lv: lv })}</label>
        <input class="dd" data-lv="${lv}" type="number" value="${REC_DD[lv]}" />
-       <div class="trig" id="ddTrig-${lv}"></div></div>`
+       <div class="trig" id="ddTrig-${lv}"></div>
+       <div class="hist" id="ddHist-${lv}"></div></div>`
     ).join("");
     $("rbRow").innerHTML = RB.map((lv) =>
       `<div class="field"><label>${T("inp.rbLabel", { lv: lv })}</label>
@@ -365,7 +366,8 @@
     const src = SOURCES[$("source").value];
     let st = null;
     try { st = BT.computeLiveState(src.a, src.b); } catch (e) { st = null; }
-    // 历史涨幅小字只依赖全量历史，与实时状态无关，先渲染，避免实时状态算不出来时空白
+    // 历史涨跌幅小字只依赖全量历史，与实时状态无关，先渲染，避免实时状态算不出来时空白
+    renderDdHistory(src);
     renderRbHistory(src);
     if (!st) {
       $("ddStatus").textContent = "";
@@ -495,6 +497,46 @@
         + s.samples.map((x) =>
             `${x.troughDate} → ${x.date}：${src.na} +${x.gainA.toFixed(0)}%，`
             + `${src.nb} +${x.gainB.toFixed(0)}%`).join("\n");
+    });
+  }
+
+  // ---- 补仓档位下方：历史上该档触发时，杠杆端跌了多少 ----
+  // 与减仓侧对称：补仓阈值写的是「基准端自历史高点 -35%」，但真正要买的是杠杆端，
+  // 而杠杆端同期跌幅远不止 3 倍（日度复利在下跌段同样放大，且不可逆）。
+  // 这里统计历史上每次该档达标时「同一峰值日 -> 达标日」的杠杆端跌幅，
+  // 让输入比例时心里有数：买的是一个已经腰斩甚至跌去九成的仓位。
+  const _ddHistCache = {};
+  function ddHistoryOf(src) {
+    const k = src.a + "|" + src.b;
+    if (!(k in _ddHistCache)) {
+      try { _ddHistCache[k] = BT.drawdownLeverageStats(src.a, src.b, true); }
+      catch (e) { _ddHistCache[k] = null; }
+    }
+    return _ddHistCache[k];
+  }
+  function renderDdHistory(src) {
+    const stats = ddHistoryOf(src);
+    DD.forEach((lv) => {
+      const el = $(`ddHist-${lv}`);
+      if (!el) return;
+      const s = stats && stats[lv];
+      if (!s || !s.n) {
+        el.innerHTML = T("hist.dd.none", { nb: src.nb });
+        el.removeAttribute("title");
+        return;
+      }
+      el.innerHTML = T("hist.dd", {
+        nb: src.nb, n: s.n,
+        avg: "-" + s.avgB.toFixed(0) + "%",
+        min: "-" + s.minB.toFixed(0) + "%",
+        max: "-" + s.maxB.toFixed(0) + "%",
+        x: s.avgRatio.toFixed(1),
+      });
+      // 悬停看每一次的峰值日 -> 达标日与当次跌幅
+      el.title = T("hist.dd.title", { na: src.na, nb: src.nb, lv: lv }) + "\n"
+        + s.samples.map((x) =>
+            `${x.peakDate} → ${x.date}：${src.na} -${x.dropA.toFixed(0)}%，`
+            + `${src.nb} -${x.dropB.toFixed(0)}%`).join("\n");
     });
   }
 
