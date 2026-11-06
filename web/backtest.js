@@ -450,8 +450,67 @@ function phaseTimeline(keyA, keyB) {
   return st ? out : [];
 }
 
+// ===== 历史同档减仓时，杠杆端涨了多少 =====
+// 回答「基准端(如 SMH)自有效底部反弹 +200%、我该减仓的那一刻，杠杆端(如 SOXL)
+// 大概涨了多少倍」。做法：复用 replayState 的价格基准状态机，逐日监听各减仓档
+// 首次达标的那一天，取「同一有效底部日 -> 达标日」区间内杠杆端的涨幅。
+//
+// 口径说明：
+// · 有效底部刷新(创出更低点)时 rbFired 会清空，同一档可在不同底部各统计一次；
+// · onlyReal=true 剔除「数据首日那个兜底底部」产生的伪样本——它不是真实下跌打出来的
+//   底部，只是没有历史可依时的初始基准（注意不能用 segActive 过滤：+200% 达标时
+//   价格早已创新高、segActive 已复位，那样会把所有高档样本都误杀）；
+// · 杠杆端涨幅用两端收盘价直接算，含日度复利损耗与跟踪误差，是真实可观测值。
+function reboundLeverageStats(keyA, keyB, onlyReal) {
+  const sa = seriesMap(keyA), sb = seriesMap(keyB);
+  const all = commonDates(keyA, keyB);
+  const firstDate = all.length ? all[0] : null;
+  const only = onlyReal !== false;
+  const samples = {};
+  for (const lv of REBOUND_LEVELS) samples[lv] = [];
+
+  let curTrough = null;
+  let seen = new Set();
+  const st = replayState(keyA, keyB, function (d) {
+    // 有效底部换了(新一轮下跌)就重新计数，与引擎清空 rbFired 的时点一致
+    if (d.troughDate !== curTrough) { curTrough = d.troughDate; seen = new Set(); }
+    for (const lv of REBOUND_LEVELS) {
+      if (!d.rbFired.has(lv) || seen.has(lv)) continue;
+      seen.add(lv);
+      if (only && d.troughDate === firstDate) continue;
+      const a0 = sa[d.troughDate], b0 = sb[d.troughDate], b1 = sb[d.date];
+      if (!(a0 > 0) || !(b0 > 0) || !(b1 > 0)) continue;
+      samples[lv].push({
+        troughDate: d.troughDate, date: d.date,
+        gainA: (d.price / a0 - 1) * 100.0,
+        gainB: (b1 / b0 - 1) * 100.0,
+        ratio: (b1 / b0 - 1) / (d.price / a0 - 1),
+        days: Math.round((new Date(d.date) - new Date(d.troughDate)) / 86400000),
+      });
+    }
+  });
+  if (!st) return null;
+
+  const out = {};
+  for (const lv of REBOUND_LEVELS) {
+    const s = samples[lv];
+    if (!s.length) { out[lv] = { level: lv, n: 0, samples: [] }; continue; }
+    const gb = s.map((x) => x.gainB);
+    const avg = gb.reduce((a, b) => a + b, 0) / gb.length;
+    const sorted = gb.slice().sort((x, y) => x - y);
+    const mid = Math.floor(sorted.length / 2);
+    out[lv] = {
+      level: lv, n: s.length, samples: s,
+      avgB: avg, minB: sorted[0], maxB: sorted[sorted.length - 1],
+      medianB: sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2,
+      avgRatio: s.reduce((a, x) => a + x.ratio, 0) / s.length,
+    };
+  }
+  return out;
+}
+
 window.SMH_BT = {
   runBacktest, calcMetrics, calcFlowMetrics, commonDates, computeLiveState,
-  classifyPhase, replayState, phaseTimeline, seriesMap,
+  classifyPhase, replayState, phaseTimeline, seriesMap, reboundLeverageStats,
   DRAWDOWN_LEVELS, REBOUND_LEVELS, TROUGH_TRIGGER_PCT, PHASE_REBOUND_PCT,
 };

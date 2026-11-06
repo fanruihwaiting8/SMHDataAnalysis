@@ -374,6 +374,9 @@ Object.assign(window.I18N.zh, {
   "trig.rb.fired": "本轮已触发（{price}）<br/>须跌出新底部后才重置",
   "trig.rb.hit": "涨到 {price} 减仓<br/>✓ 已达（现价已高于触发价）",
   "trig.rb.wait": "涨到 {price} 减仓<br/>还需涨 {gap}%",
+  "hist.rb": "历史同档 {n} 次<br/>{nb} 平均涨 <b>{avg}</b>（{min}~{max}，约 {x} 倍）",
+  "hist.rb.none": "历史上该档从未触发过<br/>暂无 {nb} 涨幅参照",
+  "hist.rb.title": "历史上 {na} 自有效底部反弹 +{lv}% 的那一天，{nb} 自同一底部日算起的涨幅：",
 });
 Object.assign(window.I18N.en, {
   "live.head": "As of {date} | current phase: <b>{phase}</b>",
@@ -393,6 +396,9 @@ Object.assign(window.I18N.en, {
   "trig.rb.fired": "Already fired this cycle ({price})<br/>Resets only after a new bottom",
   "trig.rb.hit": "Trim at {price}<br/>✓ Reached (price is above the trigger)",
   "trig.rb.wait": "Trim at {price}<br/>Needs another {gap}% rise",
+  "hist.rb": "{n} past occurrence(s)<br/>{nb} gained <b>{avg}</b> on average ({min}~{max}, ≈{x}x)",
+  "hist.rb.none": "This level has never fired<br/>No {nb} reference yet",
+  "hist.rb.title": "On the day {na} rebounded +{lv}% off its active bottom, this is how much {nb} had gained from that same bottom date:",
 });
 
 /* ---------- 进场建议：清单表 ---------- */

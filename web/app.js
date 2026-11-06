@@ -164,7 +164,8 @@
     $("rbRow").innerHTML = RB.map((lv) =>
       `<div class="field"><label>${T("inp.rbLabel", { lv: lv })}</label>
        <input class="rb" data-lv="${lv}" type="number" value="${REC_RB[lv]}" />
-       <div class="trig" id="rbTrig-${lv}"></div></div>`
+       <div class="trig" id="rbTrig-${lv}"></div>
+       <div class="hist" id="rbHist-${lv}"></div></div>`
     ).join("");
   }
 
@@ -364,6 +365,8 @@
     const src = SOURCES[$("source").value];
     let st = null;
     try { st = BT.computeLiveState(src.a, src.b); } catch (e) { st = null; }
+    // 历史涨幅小字只依赖全量历史，与实时状态无关，先渲染，避免实时状态算不出来时空白
+    renderRbHistory(src);
     if (!st) {
       $("ddStatus").textContent = "";
       $("rbStatus").textContent = "";
@@ -451,6 +454,47 @@
         el.className = "trig";
         el.innerHTML = T("trig.rb.wait", { price: fmtPrice(tp), gap: gap.toFixed(2) });
       }
+    });
+  }
+
+  // ---- 减仓档位下方：历史上该档触发时，杠杆端涨了多少 ----
+  // 解决的问题：减仓阈值写的是「基准端自有效底部 +200%」，但真正要卖的是杠杆端，
+  // 而杠杆端在同一段行情里的涨幅远不止 3 倍（日度复利会放大趋势段的收益）。
+  // 这里把历史上每次该档达标时「同一底部日 -> 达标日」的杠杆端涨幅统计出来，
+  // 让输入比例时心里有数：卖的是一个已经涨了 N 倍的仓位。
+  // 统计跨全量历史，不随上方起止日期变化；数据源切换时重算。
+  const _rbHistCache = {};
+  function rbHistoryOf(src) {
+    const k = src.a + "|" + src.b;
+    if (!(k in _rbHistCache)) {
+      try { _rbHistCache[k] = BT.reboundLeverageStats(src.a, src.b, true); }
+      catch (e) { _rbHistCache[k] = null; }
+    }
+    return _rbHistCache[k];
+  }
+  function renderRbHistory(src) {
+    const stats = rbHistoryOf(src);
+    RB.forEach((lv) => {
+      const el = $(`rbHist-${lv}`);
+      if (!el) return;
+      const s = stats && stats[lv];
+      if (!s || !s.n) {
+        el.innerHTML = T("hist.rb.none", { nb: src.nb });
+        el.removeAttribute("title");
+        return;
+      }
+      el.innerHTML = T("hist.rb", {
+        nb: src.nb, n: s.n,
+        avg: fmtBigPct(s.avgB / 100),
+        min: fmtBigPct(s.minB / 100),
+        max: fmtBigPct(s.maxB / 100),
+        x: s.avgRatio.toFixed(1),
+      });
+      // 悬停看每一次的底部日 -> 达标日与当次涨幅，避免小字堆太多内容
+      el.title = T("hist.rb.title", { na: src.na, nb: src.nb, lv: lv }) + "\n"
+        + s.samples.map((x) =>
+            `${x.troughDate} → ${x.date}：${src.na} +${x.gainA.toFixed(0)}%，`
+            + `${src.nb} +${x.gainB.toFixed(0)}%`).join("\n");
     });
   }
 
