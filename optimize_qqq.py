@@ -187,8 +187,9 @@ def main():
     rb = {lv: p for lv, p in zip(RB_LEVELS, r3)}
     res = bt.run_backtest(QQQ_CAP, TQQQ_CAP, dd, rb, QQQ_CSV, TQQQ_CSV)
     print(f"\n----- 调仓明细（共 {len(res['trades'])} 笔）-----")
-    for d, act, detail, pa, pb in res["trades"]:
-        print(f"  {d}  {act}  {detail}  （成交价 {pa:.2f} / {pb:.2f}）")
+    for d, act, detail, pa, pb, va, vb in res["trades"]:
+        print(f"  {d}  {act}  {detail}  （成交价 {pa:.2f} / {pb:.2f}"
+              f"；成交后市值 {va:,.0f} / {vb:,.0f}）")
 
 
 if __name__ == "__main__":

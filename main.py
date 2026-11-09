@@ -91,7 +91,7 @@ GUIDE_SECTIONS = [
         "以及「全买基准端不动」「全买杠杆端不动」两个对照。",
         "· 分析结果文本：关键指标（CAGR 年化、最大回撤、夏普、最长套牢天数）与"
         "逐笔交易明细——每笔含日期、方向、换仓金额、当天两端成交价（按当日收盘价"
-        "成交）、成交后总资金。",
+        "成交）、成交后两端各自持仓市值、成交后总资金。",
         "· 净值曲线：动态策略 vs 50-50 不动 vs 纯持基准 vs 纯持杠杆，四条线同口径"
         "对比；红三角＝补仓、绿箭头＝减仓；鼠标悬停可看当日各条曲线数值。",
         "· 「📊 标的对比看板」：同一区间内几组标的横向比谁更强。",
@@ -1047,11 +1047,14 @@ class SMHApp:
         if result["trades"]:
             lines.append("")
             lines.append("----- 交易明细 -----")
-            for d, action, detail, price_a, price_b in result["trades"]:
+            for d, action, detail, price_a, price_b, val_a, val_b in \
+                    result["trades"]:
                 lines.append(
                     f"[{d}] {action}｜{detail}"
                     f"｜成交价 {self._name_a()} {price_a:.2f} / "
-                    f"{self._name_b()} {price_b:.2f}")
+                    f"{self._name_b()} {price_b:.2f}"
+                    f"｜成交后持仓市值 {self._name_a()} {val_a:,.2f} / "
+                    f"{self._name_b()} {val_b:,.2f}")
 
         # 模型认定的底部（反弹基准点 trough）及其日期
         troughs = result.get("troughs", [])

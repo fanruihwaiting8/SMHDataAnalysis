@@ -246,7 +246,7 @@
           <li data-i18n-html="guide.s3.li2"><b>关键指标</b>：最终总资金、CAGR 年化、最大回撤（越小越好）、夏普、最长套牢天数。</li>
           <li data-i18n-html="guide.s3.li3"><b>净值曲线</b>：动态策略 vs 50-50 不动 vs 纯持基准 vs 纯持杠杆，四条线同口径对比；红三角＝补仓、绿箭头＝减仓；鼠标悬停看当日各条曲线数值与当日成交价。资金差距过大时勾上「对数坐标」更易读。</li>
           <li data-i18n-html="guide.s3.li4"><b>组合横向对比</b>：同一区间内几组标的谁更强。</li>
-          <li data-i18n-html="guide.s3.li5"><b>逐笔交易明细</b>：每次换仓的日期、方向、换了多少钱、<b>当天两端的成交价</b>（本模型按当日收盘价成交）、成交后总资金。</li>
+          <li data-i18n-html="guide.s3.li5"><b>逐笔交易明细</b>：每次换仓的日期、方向、换了多少钱、<b>当天两端的成交价</b>（本模型按当日收盘价成交）、<b>成交后两端各自的持仓市值</b>、成交后总资金。</li>
           <li data-i18n-html="guide.s3.li6"><b>进场建议</b>（页面最底部）：按当前选中组合的真实状态，给出此刻两端配比与之后各档的触发价与金额。</li>
           <li data-i18n-html="guide.s3.li7"><b>每月定投</b>（运行回测那一栏的勾选框）：勾上后每月第一个交易日注入「起始资金的 1%」全额买入基准端，四条对比曲线用同一现金流。此时点「填入推荐参数」会填入<b>按定投口径重新网格搜索</b>出的加减仓比例（参数区下方会列出与一次性投入的差异），指标也换成 XIRR / TWR + 累计投入、净盈亏，因为陆续投钱时净值倍数已不可比。勾选框右侧会显示<b>截止回测末日的累计定投总额</b>（期数 × 每月金额）以及「起始本金 + 定投 = 累计投入」。</li>
         </ul>
@@ -379,7 +379,7 @@
     <h2><span data-i18n="trade.h2">逐笔交易明细</span> <span class="note" id="tradeCount"></span></h2>
     <div class="tbl-wrap">
       <table>
-        <thead><tr><th data-i18n="trade.th.date">成交日</th><th data-i18n="trade.th.type">类型</th><th data-i18n="trade.th.desc">说明</th><th id="thPriceA">基准端成交价</th><th id="thPriceB">杠杆端成交价</th><th data-i18n="trade.th.equity">成交后总资金</th></tr></thead>
+        <thead><tr><th data-i18n="trade.th.date">成交日</th><th data-i18n="trade.th.type">类型</th><th data-i18n="trade.th.desc">说明</th><th id="thPriceA">基准端成交价</th><th id="thPriceB">杠杆端成交价</th><th id="thValA">基准端持仓市值</th><th id="thValB">杠杆端持仓市值</th><th data-i18n="trade.th.equity">成交后总资金</th></tr></thead>
         <tbody id="tradeBody"></tbody>
       </table>
     </div>

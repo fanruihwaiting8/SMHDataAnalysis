@@ -148,7 +148,9 @@ const smhSeries = seriesMap(keyA);
           const move = smhValue * ratio;
           smhShares -= move / pa;
           smh3Shares += move / pb;
-          trades.push([date, "add", { k: "trade.desc.add", v: { a: keyA, b: keyB, lv: lv, move: move.toFixed(2) } }, pa, pb]);
+          // 末两位＝本笔成交后两端的持仓市值（按当日收盘价计），便于看清换仓后的仓位分布
+          trades.push([date, "add", { k: "trade.desc.add", v: { a: keyA, b: keyB, lv: lv, move: move.toFixed(2) } },
+                       pa, pb, smhShares * pa, smh3Shares * pb]);
           tradeMarks.push({ date, kind: "add", equity: smhShares * pa + smh3Shares * pb, priceA: pa, priceB: pb });
         }
         ddFired.add(lv);
@@ -181,7 +183,8 @@ const smhSeries = seriesMap(keyA);
           const move = smh3Value * ratio;
           smh3Shares -= move / pb;
           smhShares += move / pa;
-          trades.push([date, "cut", { k: "trade.desc.cut", v: { a: keyA, b: keyB, lv: lv, move: move.toFixed(2) } }, pa, pb]);
+          trades.push([date, "cut", { k: "trade.desc.cut", v: { a: keyA, b: keyB, lv: lv, move: move.toFixed(2) } },
+                       pa, pb, smhShares * pa, smh3Shares * pb]);
           tradeMarks.push({ date, kind: "cut", equity: smhShares * pa + smh3Shares * pb, priceA: pa, priceB: pb });
         }
         rbFired.add(lv);

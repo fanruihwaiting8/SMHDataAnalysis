@@ -1220,19 +1220,24 @@
     // 表头的价格列名随数据源变化（如 SMH 成交价 / SOXL 成交价）
     $("thPriceA").textContent = T("trade.th.priceDyn", { k: src.na });
     $("thPriceB").textContent = T("trade.th.priceDyn", { k: src.nb });
+    // 持仓市值列同样随数据源变化（如 SMH 持仓市值 / SOXL 持仓市值）
+    $("thValA").textContent = T("trade.th.valueDyn", { k: src.na });
+    $("thValB").textContent = T("trade.th.valueDyn", { k: src.nb });
     // 计算每笔成交后总资金：用 tradeMarks 的 equity（与 trades 一一对应）
-    // trades 元素为 [日期, 类型, 说明, 基准端成交价, 杠杆端成交价]，
-    // 价格即成交当日两标的收盘价（本模型按收盘价换仓）。
+    // trades 元素为 [日期, 类型, 说明, 基准端成交价, 杠杆端成交价, 基准端成交后市值, 杠杆端成交后市值]，
+    // 价格即成交当日两标的收盘价（本模型按收盘价换仓），市值＝成交后持股数×当日收盘价。
     const rows = res.trades.map((t, i) => {
       const eq = res.tradeMarks[i] ? fmtMoney(res.tradeMarks[i].equity) : "-";
       const cls = t[1] === "add" ? "buy" : "sell";
       const pa = t[3] != null ? fmtPrice(t[3]) : "-";
       const pb = t[4] != null ? fmtPrice(t[4]) : "-";
+      const va = t[5] != null ? fmtMoney(t[5]) : "-";
+      const vb = t[6] != null ? fmtMoney(t[6]) : "-";
       const kind = T("trade.kind." + t[1]);
       const desc = t[2] && t[2].k ? T(t[2].k, t[2].v) : (t[2] || "");
-      return `<tr><td>${t[0]}</td><td class="${cls}">${kind}</td><td>${desc}</td><td>${pa}</td><td>${pb}</td><td>${eq}</td></tr>`;
+      return `<tr><td>${t[0]}</td><td class="${cls}">${kind}</td><td>${desc}</td><td>${pa}</td><td>${pb}</td><td>${va}</td><td>${vb}</td><td>${eq}</td></tr>`;
     });
-    $("tradeBody").innerHTML = rows.join("") || `<tr><td colspan="6">${T("trade.none")}</td></tr>`;
+    $("tradeBody").innerHTML = rows.join("") || `<tr><td colspan="8">${T("trade.none")}</td></tr>`;
     $("tradeCount").textContent = T("trade.count", { n: res.trades.length });
   }
 
