@@ -25,6 +25,8 @@
   SOXL 23333004    2010-03-11  （半导体 3 倍）
   USD  6646165     2007-02-01  （ProShares Ultra Semiconductors，半导体 2 倍）
   CSI300 26672304  2005-01-04  （沪深300 指数 000300:CSI，CNY 点位，仅作对比基准）
+  ETF588000 998195844 2020-11-16（华夏上证科创板50 ETF 588000:SHH，中国科技，仅作对比基准）
+  ETF588170 978111186 2025-04-08（华夏科创半导体材料设备 ETF 588170:SHH，中国半导体，仅作对比基准）
 
 落盘表头：Date,Open,High,Low,Close,AdjClose,ChangePct,Volume
 """
@@ -66,8 +68,14 @@ TARGETS = {
     "SMH":  ("__SPLICE__", date(2001, 7, 13), 2001, "SMH_full_history.csv"),
     "SOXL": ("23333004",  date(2010, 3, 11), 2010, "SOXL_full_history.csv"),
     "USD":  ("6646165",   date(2007, 1, 30), 2007, "USD_full_history.csv"),
-    # 对比用基准指数（CNY 计价点位，仅用于净值曲线对比，不参与策略交易）
+    # 对比用基准指数/ETF（CNY 计价，仅用于净值曲线对比，不参与策略交易）
     "CSI300": ("26672304", date(2005, 1, 4), 2005, "CSI300_full_history.csv"),
+    # 中国科技：华夏上证科创板50 ETF（上市首日 2020-11-16）
+    "ETF588000": ("998195844", date(2020, 11, 16), 2020,
+                  "ETF588000_full_history.csv"),
+    # 中国半导体：华夏科创半导体材料设备 ETF（上市首日 2025-04-08）
+    "ETF588170": ("978111186", date(2025, 4, 8), 2025,
+                  "ETF588170_full_history.csv"),
 }
 
 # SMH 真实段（Nasdaq 官方）之前，用 SOXX 缩放回填

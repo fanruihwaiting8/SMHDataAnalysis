@@ -114,15 +114,21 @@ const smhSeries = seriesMap(keyA);
   const equityHoldA = [holdAShares * p0a];
   const equityHoldB = [holdBShares * p0b];
   const equity5050 = [fixedAShares * p0a + fixedBShares * p0b];
-  // 对比基准「同期沪深300」：与其他曲线完全一致的现金流（首日本金 + 每月定投）
-  // 全部投入沪深300（CNY 点位计价，不做汇率换算）。A 股与美股交易日不重合，
-  // 价格按前向填充对齐；回测起点早于沪深300 数据起点时该段为 null（图上断开），
-  // 期间注入的现金先记为待投，等首个可用价格再一次性买入。
-  const csi300Prices = alignForwardFill(common, "CSI300");
-  let csiShares = 0, csiCash = 0;
-  if (csi300Prices[0] > 0) csiShares = total / csi300Prices[0];
-  else csiCash = total;
-  const equityCSI300 = [csi300Prices[0] > 0 ? total : null];
+  // 对比基准（同期沪深300 / 中国半导体ETF 588170 / 中国科技ETF 588000）：
+  // 与其他曲线完全一致的现金流（首日本金 + 每月定投）全部投入该基准
+  // （CNY 计价，不做汇率换算）。A 股与美股交易日不重合，价格按前向填充对齐；
+  // 回测起点早于该基准数据起点时该段为 null（图上断开），期间注入的现金先记为
+  // 待投，等首个可用价格再一次性买入。
+  const benches = ["CSI300", "ETF588170", "ETF588000"].map((key) => {
+    const prices = alignForwardFill(common, key);
+    const ok = prices[0] > 0;
+    return {
+      key, prices,
+      shares: ok ? total / prices[0] : 0,
+      cash: ok ? 0 : total,
+      equity: [ok ? total : null],
+    };
+  });
   // 外部现金流（与 equityDates 对齐）：首日为初始本金，其后为当日定投注入额。
   // 有外部注入时净值曲线不能直接当收益看，须配合 calcFlowMetrics 使用。
   const flows = [total];
@@ -144,7 +150,7 @@ const smhSeries = seriesMap(keyA);
       holdBShares += inflow / pb;
       fixedAShares += (inflow * wA) / pa;
       fixedBShares += (inflow * (1 - wA)) / pb;
-      csiCash += inflow;                        // 对比基准：待投现金
+      for (const b of benches) b.cash += inflow;  // 对比基准：待投现金
     }
     flows.push(inflow);
 
@@ -154,12 +160,14 @@ const smhSeries = seriesMap(keyA);
     equityHoldB.push(holdBShares * pb);
     equity5050.push(fixedAShares * pa + fixedBShares * pb);
 
-    const pc = csi300Prices[i];
-    if (pc > 0) {
-      if (csiCash > 0) { csiShares += csiCash / pc; csiCash = 0; }
-      equityCSI300.push(csiShares * pc);
-    } else {
-      equityCSI300.push(null);
+    for (const b of benches) {
+      const pc = b.prices[i];
+      if (pc > 0) {
+        if (b.cash > 0) { b.shares += b.cash / pc; b.cash = 0; }
+        b.equity.push(b.shares * pc);
+      } else {
+        b.equity.push(null);
+      }
     }
 
     if (pa > peak) {
@@ -238,7 +246,9 @@ const smhSeries = seriesMap(keyA);
     trades, troughs,
     equityDates, equityStrategy,
     equityHoldA, equityHoldB, equity5050,
-    equityCSI300,
+    equityCSI300: benches[0].equity,
+    equityETF588170: benches[1].equity,
+    equityETF588000: benches[2].equity,
     tradeMarks,
     flows, totalInvested, monthlyPct: monthlyPct || 0, monthlyCash,
   };

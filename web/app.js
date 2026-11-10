@@ -1191,17 +1191,23 @@
       });
     }
 
-    // 同期沪深300 对比线（默认不勾选）：与其他曲线同一现金流全投沪深300，
-    // 按指数点位增长折算成同等资金的净值。数据起点(2005-01-04)之前为 null，
-    // 这里必须保留 null（不能 Math.round 成 0），ECharts 会自动断开该段。
-    if (on.csi300 && res.equityCSI300 && res.equityCSI300.length === res.equityDates.length) {
+    // 对比线（默认都不勾选）：与其他曲线同一现金流全投该基准，按其价格增长折算成
+    // 同等资金的净值。各基准数据起点之前为 null，这里必须保留 null（不能 Math.round
+    // 成 0），ECharts 会自动断开该段。
+    [
+      ["csi300", "curve.csi300", "equityCSI300", "#3fb950"],
+      ["etf588170", "curve.etf588170", "equityETF588170", "#db61a2"],
+      ["etf588000", "curve.etf588000", "equityETF588000", "#39c5cf"],
+    ].forEach(([k, i18nKey, field, color]) => {
+      const arr = res[field];
+      if (!on[k] || !arr || arr.length !== res.equityDates.length) return;
       series.push({
-        name: T("curve.csi300"), type: "line", showSymbol: false, smooth: false,
-        lineStyle: { width: 1.4, color: "#3fb950" }, itemStyle: { color: "#3fb950" },
+        name: T(i18nKey), type: "line", showSymbol: false, smooth: false,
+        lineStyle: { width: 1.4, color }, itemStyle: { color },
         z: 1, connectNulls: false,
-        data: res.equityCSI300.map((v) => (v == null ? null : Math.round(v))),
+        data: arr.map((v) => (v == null ? null : Math.round(v))),
       });
-    }
+    });
 
     chart.setOption({
       backgroundColor: "transparent",
