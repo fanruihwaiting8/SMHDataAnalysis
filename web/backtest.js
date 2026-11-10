@@ -57,7 +57,7 @@ function runBacktest(opts) {
     //   · 策略组：注入额全部买入基准端（现实中你每月定投的就是 1 倍 ETF），
     //     之后是否换成杠杆端完全由回撤档位规则决定，不额外择时；
     //   · 纯持基准 / 纯持杠杆：注入额分别全买各自标的；
-    //   · 50-50 不动：按初始 capA:capB 比例分摊注入。
+    //   · 50-50 不动：严格按 50%:50% 分摊注入（与你设的初始配比无关，见下）。
     // 四条曲线的外部现金流完全一致，才能公平对比。
     monthlyPct = 0,
   } = opts;
@@ -101,11 +101,13 @@ const smhSeries = seriesMap(keyA);
   const total = capA + capB;
   let holdAShares = total / p0a;
   let holdBShares = total / p0b;
-  let fixedAShares = smhShares, fixedBShares = smh3Shares;
+  // 50-50 不动：严格把总资金一半买基准端、一半买杠杆端后不再调仓，
+  // 与用户设置的初始配比 capA:capB 无关（否则这条线叫「50-50」就名不副实）。
+  let fixedAShares = (total * 0.5) / p0a;
+  let fixedBShares = (total * 0.5) / p0b;
 
-  // 定投相关：每期注入额、基准端初始占比（供 50-50 对照分摊）
+  // 定投相关：每期注入额（50-50 对照按 50%:50% 分摊，见上）
   const monthlyCash = total * (monthlyPct || 0) / 100.0;
-  const wA = total > 0 ? capA / total : 0.5;
   let lastMonth = start.slice(0, 7);
   let totalInvested = total;
 
@@ -148,8 +150,8 @@ const smhSeries = seriesMap(keyA);
       smhShares += inflow / pa;                 // 策略组：全买基准端
       holdAShares += inflow / pa;
       holdBShares += inflow / pb;
-      fixedAShares += (inflow * wA) / pa;
-      fixedBShares += (inflow * (1 - wA)) / pb;
+      fixedAShares += (inflow * 0.5) / pa;
+      fixedBShares += (inflow * 0.5) / pb;
       for (const b of benches) b.cash += inflow;  // 对比基准：待投现金
     }
     flows.push(inflow);

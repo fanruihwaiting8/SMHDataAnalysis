@@ -244,7 +244,7 @@
         <ul>
           <li data-i18n-html="guide.s3.li1"><b>参数区的状态条与小字</b>：显示当前最新价、距峰值跌幅、距有效底部涨幅，以及每一档<b>还要跌/涨到多少钱才会触发</b>——这是把回测结论用到实盘的地方。</li>
           <li data-i18n-html="guide.s3.li2"><b>关键指标</b>：最终总资金、CAGR 年化、最大回撤（越小越好）、夏普、最长套牢天数。</li>
-          <li data-i18n-html="guide.s3.li3"><b>净值曲线</b>：动态策略 vs 50-50 不动 vs 纯持基准 vs 纯持杠杆，四条线同口径对比；红三角＝补仓、绿箭头＝减仓；鼠标悬停看当日各条曲线数值与当日成交价。资金差距过大时勾上「对数坐标」更易读。</li>
+          <li data-i18n-html="guide.s3.li3"><b>净值曲线</b>：动态策略 vs 50-50 不动 vs 纯持基准 vs 纯持杠杆，四条线同口径对比；「50-50 不动」是严格一半一半买入后不调仓（与你设的初始配比无关），默认不勾选；红三角＝补仓、绿箭头＝减仓；鼠标悬停看当日各条曲线数值与当日成交价。资金差距过大时勾上「对数坐标」更易读。</li>
           <li data-i18n-html="guide.s3.li4"><b>组合横向对比</b>：同一区间内几组标的谁更强。</li>
           <li data-i18n-html="guide.s3.li5"><b>逐笔交易明细</b>：每次换仓的日期、方向、换了多少钱、<b>当天两端的成交价</b>（本模型按当日收盘价成交）、<b>成交后两端各自的持仓市值</b>、成交后总资金。</li>
           <li data-i18n-html="guide.s3.li6"><b>进场建议</b>（页面最底部）：按当前选中组合的真实状态，给出此刻两端配比与之后各档的触发价与金额。</li>
@@ -339,7 +339,7 @@
     <h2 data-i18n="chart.h2">净值曲线</h2>
     <div class="toggle" id="curveToggle">
       <span data-k="strategy" class="on" data-i18n="curve.strategy">动态策略</span>
-      <span data-k="hold5050" class="on" data-i18n="curve.hold5050">50-50 不动</span>
+      <span data-k="hold5050" data-i18n="curve.hold5050" title="把总资金严格按 50%:50% 买入基准端与杠杆端后不再调仓（与上面设置的初始配比无关）；定投注入也按 50%:50% 分摊">50-50 不动</span>
       <span data-k="holdA" class="on" data-i18n="curve.holdA">纯持基准</span>
       <span data-k="holdB" class="on" data-i18n="curve.holdB">纯持杠杆</span>
       <span data-k="cost" class="on" data-i18n="curve.cost">累计投入成本</span>
@@ -434,7 +434,7 @@
 // 只靠手动 bump ?v= 时，拿到旧 index.html 的用户仍会继续加载旧 JS。
 (function () {
   var t = new Date().toISOString().slice(0, 13).replace(/[-T:]/g, '');
-  var files = ['i18n.js?v=14', 'backtest.js?v=15', 'app.js?v=33'];
+  var files = ['i18n.js?v=15', 'backtest.js?v=16', 'app.js?v=33'];
   for (var i = 0; i < files.length; i++) {
     document.write('<script src="' + files[i] + '&t=' + t + '"><\/script>');
   }
