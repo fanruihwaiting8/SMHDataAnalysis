@@ -1259,7 +1259,9 @@
       },
       legend: { textStyle: { color: "#e6edf3" }, top: 0 },
       grid: { left: 60, right: 24, top: 40, bottom: 60 },
-      xAxis: { type: "category", data: res.equityDates, axisLabel: { color: "#8b949e" } },
+      // showMaxLabel：X 轴标签默认按间隔抽样，最右端那个标签往往不是最后一个交易日，
+      // 容易被误读成「数据只更新到那天」。强制把末端日期显示出来。
+      xAxis: { type: "category", data: res.equityDates, axisLabel: { color: "#8b949e", showMaxLabel: true } },
       yAxis: {
         type: on.log ? "log" : "value",
         axisLabel: { color: "#8b949e", formatter: (v) => "$" + (v / 1000) + "k" },
