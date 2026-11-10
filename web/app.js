@@ -1228,8 +1228,15 @@
               + `<td style="padding:2px 0 2px 18px;text-align:right">$${(+p.value).toLocaleString()}</td>`
               + `<td style="padding:2px 0 2px 14px;text-align:right;color:${col}">${ret}</td></tr>`;
           });
-          let s = ps[0].axisValueLabel
-            + `<table style="border-collapse:collapse;margin-top:2px">${rows}</table>`;
+          // 表头显示「回测起始日 → 当前落点日」：tooltip 里的金额都是从起始日
+          // 累计到该落点的结果，只给落点日容易让人误以为是当日数值。
+          const d0 = res.equityDates[0];
+          const dCur = ps[0].axisValueLabel;
+          const yrs = (new Date(dCur) - new Date(d0)) / (365.25 * 86400000);
+          let s = `<span style="color:#8b949e;font-size:12px">${d0} → </span>`
+            + `<b>${dCur}</b>`
+            + `<span style="color:#8b949e;font-size:12px"> · ${T("curve.span", { y: yrs.toFixed(1) })}</span>`
+            + `<table style="border-collapse:collapse;margin-top:4px">${rows}</table>`;
           // 同时显示策略与成本线时，附带当日相对累计投入的浮盈/浮亏，便于判断是否已回本
           const pc = ps.find((p) => p.seriesName === costName);
           const pst = ps.find((p) => p.seriesName === T("curve.strategy"));
