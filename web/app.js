@@ -334,6 +334,20 @@
       : p.toFixed(1) + "%";
   }
 
+  // tooltip 用的「大概涨跌幅」：只求方便横向对比，不追求精确。
+  // 分母是当日累计投入成本。涨幅动辄上千倍时百分数会长到挤爆 tooltip，
+  // 因此超过 +1000% 改用「×倍数」表示（如 ×2,677）。
+  function fmtRoughRet(v, cost) {
+    if (!(cost > 0)) return "—";
+    const r = v / cost;
+    const p = (r - 1) * 100;
+    if (Math.abs(p) >= 1000) {
+      return "×" + (r >= 100 ? Math.round(r).toLocaleString("en-US") : r.toFixed(1));
+    }
+    if (Math.abs(p) >= 10) return (p >= 0 ? "+" : "") + Math.round(p) + "%";
+    return (p >= 0 ? "+" : "") + p.toFixed(1) + "%";
+  }
+
   // ---- 更新数据源可选日期范围提示 ----
   // resetDates=true 时（如切换数据源）强制把起止日对齐到新区间的两端，
   // 否则切到区间更宽的组合时旧的较晚日期不会被重置，看起来像"没生效"。
@@ -1161,9 +1175,14 @@
     // 累计投入成本线（虚线）：一次性口径恒为初始本金；定投口径逐月台阶上移。
     // res.flows 与 equityDates 对齐（flows[0]=初始本金，其后为当日注入额），直接前缀和即可。
     // 作用：曲线跌破此线即账面浮亏，回升穿越此线即「回本」，可直观读出回本时间点。
-    if (on.cost && res.flows && res.flows.length === res.equityDates.length) {
+    // costData 无论是否勾选显示都先算好：tooltip 的「涨跌幅」列要用它当分母
+    // （各条曲线现金流完全一致，所以统一以当日累计投入为基准才有可比性）。
+    let costData = null;
+    if (res.flows && res.flows.length === res.equityDates.length) {
       let acc = 0;
-      const costData = res.flows.map((f) => { acc += (f || 0); return Math.round(acc); });
+      costData = res.flows.map((f) => { acc += (f || 0); return Math.round(acc); });
+    }
+    if (on.cost && costData) {
       series.push({
         name: T("curve.cost"), type: "line", showSymbol: false, smooth: false,
         lineStyle: { width: 1.4, color: "#a371f7", type: "dashed" },
@@ -1189,10 +1208,30 @@
       tooltip:{
         trigger: "axis",
         formatter: (ps) => {
-          let s = ps[0].axisValueLabel + "<br/>";
-          ps.forEach((p) => { if (p.value == null) return; s += `${p.marker}${p.seriesName}: $${(+p.value).toLocaleString()}<br/>`; });
+          // 三列表格布局：名称 | 金额 | 相对当日累计投入的大致涨跌幅。
+          // 用表格而不是纯文本拼接，是为了金额/涨跌幅右对齐、不同行不会挤在一起。
+          const idx = ps[0].dataIndex;
+          const cost = costData ? costData[idx] : 0;
+          const costName = T("curve.cost");
+          let rows = "";
+          ps.forEach((p) => {
+            if (p.value == null) return;
+            // 成本线自身即基准，显示涨跌幅没有意义
+            const isCost = p.seriesName === costName;
+            let ret = "—", col = "#8b949e";
+            if (!isCost && cost > 0) {
+              const d = (+p.value) - cost;
+              ret = fmtRoughRet(+p.value, cost);
+              col = d >= 0 ? "#3fb950" : "#f85149";
+            }
+            rows += `<tr><td style="padding:2px 0">${p.marker}${p.seriesName}</td>`
+              + `<td style="padding:2px 0 2px 18px;text-align:right">$${(+p.value).toLocaleString()}</td>`
+              + `<td style="padding:2px 0 2px 14px;text-align:right;color:${col}">${ret}</td></tr>`;
+          });
+          let s = ps[0].axisValueLabel
+            + `<table style="border-collapse:collapse;margin-top:2px">${rows}</table>`;
           // 同时显示策略与成本线时，附带当日相对累计投入的浮盈/浮亏，便于判断是否已回本
-          const pc = ps.find((p) => p.seriesName === T("curve.cost"));
+          const pc = ps.find((p) => p.seriesName === costName);
           const pst = ps.find((p) => p.seriesName === T("curve.strategy"));
           if (pc && pst) {
             const diff = (+pst.value) - (+pc.value);
