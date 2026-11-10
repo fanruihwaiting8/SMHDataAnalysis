@@ -31,6 +31,22 @@ function commonDates(keyA, keyB) {
   return a.dates.filter((d) => setB.has(d)).sort();
 }
 
+// 把某标的价格前向填充对齐到给定交易日序列。
+// 用途：对比基准（如沪深300）与美股交易日不重合，取「当日或之前最近一个收盘价」。
+// 目标日早于该标的最早数据时返回 null（前端不画这段）。
+function alignForwardFill(targetDates, key) {
+  const s = window.PRICE_DATA[key];
+  const out = new Array(targetDates.length).fill(null);
+  if (!s || !s.dates || !s.dates.length) return out;
+  let j = 0, last = null;
+  for (let i = 0; i < targetDates.length; i++) {
+    const d = targetDates[i];
+    while (j < s.dates.length && s.dates[j] <= d) { last = s.closes[j]; j++; }
+    out[i] = last > 0 ? last : null;
+  }
+  return out;
+}
+
 // 主回测：keyA=基准(1x), keyB=杠杆(3x/2x)
 function runBacktest(opts) {
   const {
@@ -98,6 +114,15 @@ const smhSeries = seriesMap(keyA);
   const equityHoldA = [holdAShares * p0a];
   const equityHoldB = [holdBShares * p0b];
   const equity5050 = [fixedAShares * p0a + fixedBShares * p0b];
+  // 对比基准「同期沪深300」：与其他曲线完全一致的现金流（首日本金 + 每月定投）
+  // 全部投入沪深300（CNY 点位计价，不做汇率换算）。A 股与美股交易日不重合，
+  // 价格按前向填充对齐；回测起点早于沪深300 数据起点时该段为 null（图上断开），
+  // 期间注入的现金先记为待投，等首个可用价格再一次性买入。
+  const csi300Prices = alignForwardFill(common, "CSI300");
+  let csiShares = 0, csiCash = 0;
+  if (csi300Prices[0] > 0) csiShares = total / csi300Prices[0];
+  else csiCash = total;
+  const equityCSI300 = [csi300Prices[0] > 0 ? total : null];
   // 外部现金流（与 equityDates 对齐）：首日为初始本金，其后为当日定投注入额。
   // 有外部注入时净值曲线不能直接当收益看，须配合 calcFlowMetrics 使用。
   const flows = [total];
@@ -119,6 +144,7 @@ const smhSeries = seriesMap(keyA);
       holdBShares += inflow / pb;
       fixedAShares += (inflow * wA) / pa;
       fixedBShares += (inflow * (1 - wA)) / pb;
+      csiCash += inflow;                        // 对比基准：待投现金
     }
     flows.push(inflow);
 
@@ -127,6 +153,14 @@ const smhSeries = seriesMap(keyA);
     equityHoldA.push(holdAShares * pa);
     equityHoldB.push(holdBShares * pb);
     equity5050.push(fixedAShares * pa + fixedBShares * pb);
+
+    const pc = csi300Prices[i];
+    if (pc > 0) {
+      if (csiCash > 0) { csiShares += csiCash / pc; csiCash = 0; }
+      equityCSI300.push(csiShares * pc);
+    } else {
+      equityCSI300.push(null);
+    }
 
     if (pa > peak) {
       peak = pa;
@@ -204,6 +238,7 @@ const smhSeries = seriesMap(keyA);
     trades, troughs,
     equityDates, equityStrategy,
     equityHoldA, equityHoldB, equity5050,
+    equityCSI300,
     tradeMarks,
     flows, totalInvested, monthlyPct: monthlyPct || 0, monthlyCash,
   };
@@ -574,7 +609,7 @@ function drawdownLeverageStats(keyA, keyB, onlyReal) {
 
 window.SMH_BT = {
   runBacktest, calcMetrics, calcFlowMetrics, commonDates, computeLiveState,
-  classifyPhase, replayState, phaseTimeline, seriesMap,
+  classifyPhase, replayState, phaseTimeline, seriesMap, alignForwardFill,
   reboundLeverageStats, drawdownLeverageStats,
   DRAWDOWN_LEVELS, REBOUND_LEVELS, TROUGH_TRIGGER_PCT, PHASE_REBOUND_PCT,
 };

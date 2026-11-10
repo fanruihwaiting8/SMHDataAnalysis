@@ -343,6 +343,7 @@
       <span data-k="holdA" class="on" data-i18n="curve.holdA">纯持基准</span>
       <span data-k="holdB" class="on" data-i18n="curve.holdB">纯持杠杆</span>
       <span data-k="cost" class="on" data-i18n="curve.cost">累计投入成本</span>
+      <span data-k="csi300" data-i18n="curve.csi300" title="同等现金流全部投入沪深300指数（CNY 点位，不做汇率换算）；沪深300 数据自 2005-01-04 起，更早区间不画">同期沪深300</span>
       <span data-k="log" class="on" data-i18n="curve.log">对数坐标</span>
     </div>
     <div id="chart"></div>
@@ -423,7 +424,7 @@
 // 避免浏览器长期缓存旧行情导致更新后看不到新数据（同一小时内仍可命中缓存）。
 (function () {
   var t = new Date().toISOString().slice(0, 13).replace(/[-T:]/g, '');
-  document.write('<script src="data.js?v=5&t=' + t + '"><\/script>');
+  document.write('<script src="data.js?v=6&t=' + t + '"><\/script>');
 })();
 </script>
 <script>
@@ -431,7 +432,7 @@
 // 只靠手动 bump ?v= 时，拿到旧 index.html 的用户仍会继续加载旧 JS。
 (function () {
   var t = new Date().toISOString().slice(0, 13).replace(/[-T:]/g, '');
-  var files = ['i18n.js?v=11', 'backtest.js?v=13', 'app.js?v=28'];
+  var files = ['i18n.js?v=12', 'backtest.js?v=14', 'app.js?v=29'];
   for (var i = 0; i < files.length; i++) {
     document.write('<script src="' + files[i] + '&t=' + t + '"><\/script>');
   }
@@ -453,7 +454,7 @@
 <script>
 // ===== 云端更新（GitHub Pages 等静态托管）=====
 // 静态页面不能直接写仓库，所以这里调用 GitHub REST API 触发 update-data.yml 工作流：
-// 云端抓取五标的行情 -> 重建 web/data.js -> 提交回仓库 -> 重新发布 Pages。
+// 云端抓取各标的行情（含沪深300 对比基准） -> 重建 web/data.js -> 提交回仓库 -> 重新发布 Pages。
 // 触发 workflow_dispatch 必须带令牌，令牌只存使用者自己浏览器的 localStorage，不入库。
 var GH_OWNER = 'fanruihwaiting8';
 var GH_REPO = 'SMHDataAnalysis';
@@ -581,7 +582,7 @@ function initCloudUpdate(btn, status) {
 }
 </script>
 <script>
-// 点击「更新最新数据」：请求本地服务联网抓取五标的行情并重建 data.js，完成后刷新页面。
+// 点击「更新最新数据」：请求本地服务联网抓取各标的行情（含沪深300 对比基准）并重建 data.js，完成后刷新页面。
 (function () {
   var btn = document.getElementById('updateData');
   var status = document.getElementById('updateStatus');

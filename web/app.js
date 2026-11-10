@@ -1172,13 +1172,25 @@
       });
     }
 
+    // 同期沪深300 对比线（默认不勾选）：与其他曲线同一现金流全投沪深300，
+    // 按指数点位增长折算成同等资金的净值。数据起点(2005-01-04)之前为 null，
+    // 这里必须保留 null（不能 Math.round 成 0），ECharts 会自动断开该段。
+    if (on.csi300 && res.equityCSI300 && res.equityCSI300.length === res.equityDates.length) {
+      series.push({
+        name: T("curve.csi300"), type: "line", showSymbol: false, smooth: false,
+        lineStyle: { width: 1.4, color: "#3fb950" }, itemStyle: { color: "#3fb950" },
+        z: 1, connectNulls: false,
+        data: res.equityCSI300.map((v) => (v == null ? null : Math.round(v))),
+      });
+    }
+
     chart.setOption({
       backgroundColor: "transparent",
       tooltip:{
         trigger: "axis",
         formatter: (ps) => {
           let s = ps[0].axisValueLabel + "<br/>";
-          ps.forEach((p) => { s += `${p.marker}${p.seriesName}: $${(+p.value).toLocaleString()}<br/>`; });
+          ps.forEach((p) => { if (p.value == null) return; s += `${p.marker}${p.seriesName}: $${(+p.value).toLocaleString()}<br/>`; });
           // 同时显示策略与成本线时，附带当日相对累计投入的浮盈/浮亏，便于判断是否已回本
           const pc = ps.find((p) => p.seriesName === T("curve.cost"));
           const pst = ps.find((p) => p.seriesName === T("curve.strategy"));

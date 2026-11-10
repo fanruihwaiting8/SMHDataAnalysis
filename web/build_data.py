@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-把 Input/ 下 5 个 CSV 的 (Date, Close) 抽取出来，生成纯前端用的 data.js。
+把 Input/ 下各标的 CSV 的 (Date, Close) 抽取出来，生成纯前端用的 data.js。
 
 前端回测只需要每日收盘价，所以这里只保留 Date -> Close，
 以「日期升序数组 + 收盘价数组」形式存储，体积最小、加载最快。
@@ -22,6 +22,8 @@ FILES = {
     "QQQ": "QQQ_full_history.csv",
     "TQQQ": "TQQQ_full_history.csv",
     "USD": "USD_full_history.csv",
+    # 对比基准（仅用于净值曲线对比，不作为策略标的）
+    "CSI300": "CSI300_full_history.csv",
 }
 
 

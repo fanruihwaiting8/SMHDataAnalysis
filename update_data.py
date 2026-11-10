@@ -24,6 +24,7 @@
   SMH  Nasdaq+SOXX 2001-07-13  （拼接：2016 前为 SOXX 缩放回填）
   SOXL 23333004    2010-03-11  （半导体 3 倍）
   USD  6646165     2007-02-01  （ProShares Ultra Semiconductors，半导体 2 倍）
+  CSI300 26672304  2005-01-04  （沪深300 指数 000300:CSI，CNY 点位，仅作对比基准）
 
 落盘表头：Date,Open,High,Low,Close,AdjClose,ChangePct,Volume
 """
@@ -65,6 +66,8 @@ TARGETS = {
     "SMH":  ("__SPLICE__", date(2001, 7, 13), 2001, "SMH_full_history.csv"),
     "SOXL": ("23333004",  date(2010, 3, 11), 2010, "SOXL_full_history.csv"),
     "USD":  ("6646165",   date(2007, 1, 30), 2007, "USD_full_history.csv"),
+    # 对比用基准指数（CNY 计价点位，仅用于净值曲线对比，不参与策略交易）
+    "CSI300": ("26672304", date(2005, 1, 4), 2005, "CSI300_full_history.csv"),
 }
 
 # SMH 真实段（Nasdaq 官方）之前，用 SOXX 缩放回填
