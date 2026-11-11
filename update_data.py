@@ -6,11 +6,16 @@
 数据源：
   - QQQ/TQQQ/SOXL/USD/SOXX：FT markets 历史价格接口（网页方式，分年调用）。
     https://markets.ft.com/data/equities/ajax/get-historical-prices
-  - SMH：Nasdaq 官方 api（build_smh_nasdaq.py）只有近 10 年（约 2016 起）；
-    FT 数据库没有美股原生 SMH（只有 2021 起的欧洲 UCITS 版 SMH:LSE）。
-    因此 SMH 采用「真实段 + 代理回填段」拼接：
-      · 2016 至今  = Nasdaq 官方真实 SMH；
-      · 2016 之前  = SOXX（iShares Semiconductor ETF，2001-07-13 起）按
+  - SMH：FT 数据库没有美股原生 SMH（只有 2021 起的欧洲 UCITS 版 SMH:LSE），
+    因此真实段走美股行情接口，且只能取到近若干年：
+      · 首选 stockanalysis.com（fetch_smh_sa.py，近 5 年，现为主用源）；
+      · 次选 Nasdaq 官方 api（build_smh_nasdaq.py，近 10 年，约 2016 起，
+        2026-11 起对本机/云端返回 403，仅作兜底）。
+    远端抓到的真实段会与本地已有真实段按日期合并（远端覆盖同日），
+    两源都失败时仅用本地，保证数据不倒退。
+    由于真实段起点有限，SMH 采用「真实段 + 代理回填段」拼接：
+      · 2016-08-03 至今 = 真实 SMH；
+      · 之前            = SOXX（iShares Semiconductor ETF，2001-07-13 起）按
         衔接日收盘价比例缩放后回填，收益率序列即 SOXX 本身。
     SOXX 与 SMH 同为费城半导体指数系 ETF，近 10 年重合期日收益相关系数
     0.9875，回调事件逐一对应，可作长周期代理。原始未缩放的 SOXX 另存
@@ -21,7 +26,7 @@
   QQQ  238029      1999-03-10  （Invesco QQQ Trust，纳指 1 倍）
   TQQQ 22950261    2010-02-11  （纳指 3 倍）
   SOXX 164751      2001-07-13  （iShares Semiconductor ETF，半导体 1 倍）
-  SMH  Nasdaq+SOXX 2001-07-13  （拼接：2016 前为 SOXX 缩放回填）
+  SMH  SA+SOXX     2001-07-13  （拼接：2016-08-03 前为 SOXX 缩放回填）
   SOXL 23333004    2010-03-11  （半导体 3 倍）
   USD  6646165     2007-02-01  （ProShares Ultra Semiconductors，半导体 2 倍）
   CSI300 26672304  2005-01-04  （沪深300 指数 000300:CSI，CNY 点位，仅作对比基准）
@@ -39,8 +44,12 @@ import time
 import urllib.request
 from datetime import date, datetime, timedelta
 
-# SMH 走 Nasdaq 官方接口（FT 无美股原生 SMH），复用其抓取逻辑
+# SMH 真实段数据源：
+#   首选 stockanalysis.com（fetch_smh_sa，近 5 年，接口稳定）
+#   次选 Nasdaq 官方（build_smh_nasdaq，2026-11 起对本机/云端返回 403）
 from build_smh_nasdaq import fetch as _fetch_smh_nasdaq
+from fetch_smh_sa import fetch as _fetch_smh_sa
+from fetch_smh_sa import us_last_closed_day as _us_last_closed_day
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INPUT_DIR = os.path.join(BASE_DIR, "Input")
@@ -89,19 +98,42 @@ DATE_RE = re.compile(
 TD_RE = re.compile(r"<td>([\d.,]+)</td>")
 
 
-def _latest_expected_trading_day():
-    """今日往前推算的最近一个有效交易日（周末回退到周五）。
+CN_SYMBOLS = ("CSI300", "ETF588000", "ETF588170")
 
-    仅按周末（周六/周日）回退，不含节假日；节假日缺一天不影响判定，
+
+def _cn_last_closed_day():
+    """A 股最近一个已收盘交易日（北京时间 15:30 前算前一日，周末回退周五）。"""
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo("Asia/Shanghai"))
+    except Exception:
+        now = datetime.now()
+    d = now.date()
+    if now.hour * 60 + now.minute < 15 * 60 + 30:
+        d = date.fromordinal(d.toordinal() - 1)
+    while d.weekday() >= 5:   # 周六/周日回退
+        d = date.fromordinal(d.toordinal() - 1)
+    return d
+
+
+def _latest_expected_trading_day(symbol=None):
+    """该标的最近一个「应当已有收盘数据」的交易日。
+
+    分市场判定，避免当日尚未收盘时被误判为"需要更新"而每次全量重抓：
+      · 美股标的（默认）：美东 16:05 之后才认为当日已收盘；
+      · A 股标的（CSI300/ETF588000/ETF588170）：北京时间 15:30 之后。
+    仅按周末回退，不含节假日；节假日缺一天不影响判定，
     因为本地数据只要 >= 该日即视为已最新。
     """
-    d = date.today()
-    wd = d.weekday()  # 周一=0 ... 周日=6
-    if wd == 5:        # 周六 -> 周五
-        d = date.fromordinal(d.toordinal() - 1)
-    elif wd == 6:      # 周日 -> 周五
-        d = date.fromordinal(d.toordinal() - 2)
-    return d
+    if symbol in CN_SYMBOLS:
+        return _cn_last_closed_day()
+    try:
+        return _us_last_closed_day()
+    except Exception:
+        d = date.today()
+        while d.weekday() >= 5:
+            d = date.fromordinal(d.toordinal() - 1)
+        return d
 
 
 def _csv_last_date(out_name):
@@ -237,19 +269,34 @@ def _build_smh_series(log=print):
     缩放系数 k = 真实段首日 SMH 收盘 / 同日 SOXX 收盘，
     回填段整体 ×k，使衔接处价格连续、收益率序列保持 SOXX 原样。
     """
-    # 1) 真实段：优先 Nasdaq 官方，失败则回退到本地已有 CSV 的真实段
-    real = []
+    # 1) 真实段：本地已落盘真实段为底，再用远端抓取结果覆盖/续写同日数据。
+    #    远端优先 stockanalysis（近 5 年，Nasdaq 官方 api 已对本机/云端 403），
+    #    再退回 Nasdaq 官方；两者都失败时仅用本地，保证不会倒退。
+    merged = {r[0]: r for r in _read_csv_rows("SMH_full_history.csv")
+              if r[0] >= SMH_REAL_FROM}
+    log(f"  [SMH] 本地真实段 {len(merged)} 条"
+        f"（末日 {max(merged) if merged else '-'}）")
+
+    fetched = []
     try:
-        real = [r for r in _fetch_smh_nasdaq() if r[0] >= SMH_REAL_FROM]
-        log(f"  [SMH] Nasdaq 真实段 {len(real)} 条")
+        fetched = [r for r in _fetch_smh_sa() if r[0] >= SMH_REAL_FROM]
+        log(f"  [SMH] stockanalysis 抓取 {len(fetched)} 条"
+            f"（末日 {fetched[-1][0] if fetched else '-'}）")
     except Exception as e:
-        log(f"  [SMH] Nasdaq 抓取失败 {e}，改用本地真实段")
-    if not real:
-        real = [r for r in _read_csv_rows("SMH_full_history.csv")
-                if r[0] >= SMH_REAL_FROM]
-        log(f"  [SMH] 本地真实段 {len(real)} 条")
+        log(f"  [SMH] stockanalysis 抓取失败 {e}")
+    if not fetched:
+        try:
+            fetched = [r for r in _fetch_smh_nasdaq() if r[0] >= SMH_REAL_FROM]
+            log(f"  [SMH] Nasdaq 抓取 {len(fetched)} 条")
+        except Exception as e:
+            log(f"  [SMH] Nasdaq 抓取失败 {e}，仅用本地真实段")
+
+    for r in fetched:
+        merged[r[0]] = r
+    real = sorted(merged.values(), key=lambda x: x[0])
     if not real:
         return []
+    log(f"  [SMH] 真实段合并后 {len(real)} 条（{real[0][0]} ~ {real[-1][0]}）")
 
     # 2) 代理段：SOXX
     prox = _read_csv_rows(PROXY_FOR_SMH)
@@ -286,7 +333,7 @@ def update_symbol(symbol, log=print, force=False):
     if not force:
         local_last = _csv_last_date(out_name)
         local_first = _csv_first_date(out_name)
-        expected = _latest_expected_trading_day()
+        expected = _latest_expected_trading_day(symbol)
         # 既要末端最新，也要起点已回溯到该标的最早可得日（容忍 10 天误差）
         back_ok = (local_first is not None
                    and local_first <= first_day + timedelta(days=10))
