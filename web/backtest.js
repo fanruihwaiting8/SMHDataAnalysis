@@ -116,12 +116,11 @@ const smhSeries = seriesMap(keyA);
   const equityHoldA = [holdAShares * p0a];
   const equityHoldB = [holdBShares * p0b];
   const equity5050 = [fixedAShares * p0a + fixedBShares * p0b];
-  // 对比基准（同期沪深300 / 中国半导体ETF 588170 / 中国科技ETF 588000）：
-  // 与其他曲线完全一致的现金流（首日本金 + 每月定投）全部投入该基准
-  // （CNY 计价，不做汇率换算）。A 股与美股交易日不重合，价格按前向填充对齐；
-  // 回测起点早于该基准数据起点时该段为 null（图上断开），期间注入的现金先记为
-  // 待投，等首个可用价格再一次性买入。
-  const benches = ["CSI300", "ETF588170", "ETF588000"].map((key) => {
+  // 对比基准（同期沪深300）：与其他曲线完全一致的现金流（首日本金 + 每月定投）
+  // 全部投入该基准（CNY 计价，不做汇率换算）。A 股与美股交易日不重合，价格按
+  // 前向填充对齐；回测起点早于该基准数据起点时该段为 null（图上断开），期间注入
+  // 的现金先记为待投，等首个可用价格再一次性买入。
+  const benches = ["CSI300"].map((key) => {
     const prices = alignForwardFill(common, key);
     const ok = prices[0] > 0;
     return {
@@ -249,8 +248,6 @@ const smhSeries = seriesMap(keyA);
     equityDates, equityStrategy,
     equityHoldA, equityHoldB, equity5050,
     equityCSI300: benches[0].equity,
-    equityETF588170: benches[1].equity,
-    equityETF588000: benches[2].equity,
     tradeMarks,
     flows, totalInvested, monthlyPct: monthlyPct || 0, monthlyCash,
   };

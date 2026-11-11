@@ -1,6 +1,6 @@
 name: Update price data
 
-# 联网刷新 Input/*.csv（SMH/SOXL/QQQ/TQQQ/USD 五标的行情 + 沪深300/588170/588000 对比基准），
+# 联网刷新 Input/*.csv（SMH/SOXL/QQQ/TQQQ/USD 五标的行情 + 沪深300 对比基准），
 # 重建 web/data.js 并提交回仓库，随后重新发布 GitHub Pages。
 #
 # 触发方式：
@@ -52,7 +52,7 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "行情无变化，跳过提交"
           else
-            git commit -m "chore(data): 自动刷新行情数据（含沪深300/588170/588000 对比基准）"
+            git commit -m "chore(data): 自动刷新行情数据（含沪深300 对比基准）"
             git push
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi

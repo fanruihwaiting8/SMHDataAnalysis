@@ -1196,8 +1196,6 @@
     // 成 0），ECharts 会自动断开该段。
     [
       ["csi300", "curve.csi300", "equityCSI300", "#3fb950"],
-      ["etf588170", "curve.etf588170", "equityETF588170", "#db61a2"],
-      ["etf588000", "curve.etf588000", "equityETF588000", "#39c5cf"],
     ].forEach(([k, i18nKey, field, color]) => {
       const arr = res[field];
       if (!on[k] || !arr || arr.length !== res.equityDates.length) return;

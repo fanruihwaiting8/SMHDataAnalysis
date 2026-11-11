@@ -30,8 +30,6 @@
   SOXL 23333004    2010-03-11  （半导体 3 倍）
   USD  6646165     2007-02-01  （ProShares Ultra Semiconductors，半导体 2 倍）
   CSI300 26672304  2005-01-04  （沪深300 指数 000300:CSI，CNY 点位，仅作对比基准）
-  ETF588000 998195844 2020-11-16（华夏上证科创板50 ETF 588000:SHH，中国科技，仅作对比基准）
-  ETF588170 978111186 2025-04-08（华夏科创半导体材料设备 ETF 588170:SHH，中国半导体，仅作对比基准）
 
 落盘表头：Date,Open,High,Low,Close,AdjClose,ChangePct,Volume
 """
@@ -79,12 +77,6 @@ TARGETS = {
     "USD":  ("6646165",   date(2007, 1, 30), 2007, "USD_full_history.csv"),
     # 对比用基准指数/ETF（CNY 计价，仅用于净值曲线对比，不参与策略交易）
     "CSI300": ("26672304", date(2005, 1, 4), 2005, "CSI300_full_history.csv"),
-    # 中国科技：华夏上证科创板50 ETF（上市首日 2020-11-16）
-    "ETF588000": ("998195844", date(2020, 11, 16), 2020,
-                  "ETF588000_full_history.csv"),
-    # 中国半导体：华夏科创半导体材料设备 ETF（上市首日 2025-04-08）
-    "ETF588170": ("978111186", date(2025, 4, 8), 2025,
-                  "ETF588170_full_history.csv"),
 }
 
 # SMH 真实段（Nasdaq 官方）之前，用 SOXX 缩放回填
@@ -98,7 +90,7 @@ DATE_RE = re.compile(
 TD_RE = re.compile(r"<td>([\d.,]+)</td>")
 
 
-CN_SYMBOLS = ("CSI300", "ETF588000", "ETF588170")
+CN_SYMBOLS = ("CSI300",)
 
 
 def _cn_last_closed_day():
@@ -121,7 +113,7 @@ def _latest_expected_trading_day(symbol=None):
 
     分市场判定，避免当日尚未收盘时被误判为"需要更新"而每次全量重抓：
       · 美股标的（默认）：美东 16:05 之后才认为当日已收盘；
-      · A 股标的（CSI300/ETF588000/ETF588170）：北京时间 15:30 之后。
+      · A 股标的（CSI300）：北京时间 15:30 之后。
     仅按周末回退，不含节假日；节假日缺一天不影响判定，
     因为本地数据只要 >= 该日即视为已最新。
     """

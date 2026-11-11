@@ -24,8 +24,6 @@ FILES = {
     "USD": "USD_full_history.csv",
     # 对比基准（仅用于净值曲线对比，不作为策略标的）
     "CSI300": "CSI300_full_history.csv",
-    "ETF588000": "ETF588000_full_history.csv",
-    "ETF588170": "ETF588170_full_history.csv",
 }
 
 
