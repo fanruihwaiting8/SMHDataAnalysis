@@ -215,16 +215,27 @@
     <summary data-i18n-html="guide.summary">📖 第一次使用？点开看这里 <span class="hint">（不看也能直接点「运行回测」）</span></summary>
     <div class="body">
       <div class="tldr" data-i18n-html="guide.tldr">
-        <b>一句话：</b>测「大跌时把一部分钱换成杠杆 ETF、大涨后再换回来」长期比死拿多赚多少、多扛多少回撤。<br/>
-        <b>最快上手：</b>点 <code>填入推荐参数</code> → 点 <code>运行回测</code>，先看结果再回来看规则。<br/>
+        <b>一句话：</b>这是个「如果当年这么买卖，今天账户里会剩多少钱」的历史模拟器——测试「大跌时把一部分钱换成涨跌放大的基金、涨回来再换回去」比一直放着不动是多赚还是少赚。<br/>
+        <b>最快上手：</b>点 <code>填入推荐参数</code> → 点 <code>运行回测</code>，先看图，再回来看规则。<br/>
         <span class="warn">⚠️ 本策略放大下跌、不保护下跌</span>，参数基于历史最优存在过拟合，<b>不构成投资建议</b>。
       </div>
 
       <details class="sec">
+        <summary data-i18n="guide.s0.title">完全没买过美股？先看这段</summary>
+        <ul>
+          <li data-i18n-html="guide.s0.li1"><b>ETF 是什么</b>：一个代码就等于一篮子股票。买 <code>SMH</code> 相当于一次买下美国上市的几十家半导体公司（英伟达、台积电、博通…），不用自己挑个股。</li>
+          <li data-i18n-html="guide.s0.li2"><b>页面里的「两端」</b>：<b>基准端</b>（SMH 半导体、QQQ 纳斯达克100）＝老老实实跟着行业涨跌；<b>杠杆端</b>（SOXL、TQQQ）＝同一个行业的「放大版」，当天涨跌乘 3 倍。放大是双向的——跌的时候也乘 3，而且行情来回震荡时它会自己慢慢磨损，所以不适合无脑拿着不管。</li>
+          <li data-i18n-html="guide.s0.li3"><b>这个页面在干嘛</b>：拿过去十几年的真实收盘价，一天一天地模拟「当年按某套规则买卖，今天会剩多少钱」。它只是复盘历史，不预测未来，也不会帮你下单。</li>
+          <li data-i18n-html="guide.s0.li4"><b>一句大白话</b>：平时拿着稳的那只；行业大跌时挪一部分钱去「放大版」赌反弹；等涨回来一大截，再把钱挪回稳的那只落袋。这个工具就是帮你算：这样挪来挪去，到底比躺着不动强多少。</li>
+          <li data-i18n-html="guide.s0.li5"><b>名词小抄</b>：<b>回撤</b>＝从最高点往下亏了百分之多少（-50% 就是腰斩）；<b>CAGR</b>＝平均每年赚百分之多少；<b>夏普</b>＝每承受一分波动换来多少收益，越高越省心；<b>最长套牢天数</b>＝最久多少天账户没回到前一个高点；<b>定投</b>＝每月固定再投一笔钱；<b>净值曲线</b>＝账户总金额随时间变化的那张图。</li>
+        </ul>
+      </details>
+
+      <details class="sec">
         <summary data-i18n="guide.s1.title">策略只有两条规则</summary>
         <ul>
-          <li data-i18n-html="guide.s1.li1"><b>回撤补仓（越跌越上杠杆）</b>：基准端（如 SMH）从历史最高点跌到 -15%/-25%/-35%… 某一档时，卖掉当时基准端市值的指定比例，全部买入杠杆端（如 SOXL）。每档在同一轮下跌中只触发一次。</li>
-          <li data-i18n-html="guide.s1.li2"><b>反弹减仓（涨回来就落袋）</b>：基准端从「有效底部」反弹 +50%/+100%/+200% 某一档时，卖掉当时杠杆端市值的指定比例，换回基准端。</li>
+          <li data-i18n-html="guide.s1.li1"><b>回撤补仓（越跌越上杠杆）</b>：基准端（如 SMH）从历史最高点跌到 -15%/-25%/-35%… 某一档时，卖掉当时基准端市值的指定比例，全部买入杠杆端（如 SOXL）。每档在同一轮下跌中只触发一次。<br/><span class="hint">说人话：跌得越狠，挪去「放大版」的钱越多。</span></li>
+          <li data-i18n-html="guide.s1.li2"><b>反弹减仓（涨回来就落袋）</b>：基准端从「有效底部」反弹 +50%/+100%/+200% 某一档时，卖掉当时杠杆端市值的指定比例，换回基准端。<br/><span class="hint">说人话：反弹到一定幅度，就把「放大版」赚到的钱收回来，换回稳的那只。</span></li>
           <li data-i18n-html="guide.s1.li3"><b>有效底部</b>＝本轮自高点回撤超过 25% 后出现的最低价。小幅回调不算新底部，避免刚跌一点就被误判成「抄到底」。</li>
         </ul>
       </details>
@@ -243,7 +254,7 @@
         <summary data-i18n="guide.s3.title">结果怎么看</summary>
         <ul>
           <li data-i18n-html="guide.s3.li1"><b>参数区的状态条与小字</b>：显示当前最新价、距峰值跌幅、距有效底部涨幅，以及每一档<b>还要跌/涨到多少钱才会触发</b>——这是把回测结论用到实盘的地方。</li>
-          <li data-i18n-html="guide.s3.li2"><b>关键指标</b>：最终总资金、CAGR 年化、最大回撤（越小越好）、夏普、最长套牢天数。</li>
+          <li data-i18n-html="guide.s3.li2"><b>关键指标</b>：最终总资金（到期末账户还剩多少钱）、CAGR 年化（平均每年赚多少）、最大回撤（中途最惨亏到百分之多少，越小越好）、夏普（收益与颠簸程度的性价比，越高越好）、最长套牢天数（最久多少天没回到前高）。</li>
           <li data-i18n-html="guide.s3.li3"><b>净值曲线</b>：动态策略 vs 50-50 不动 vs 纯持基准 vs 纯持杠杆，四条线同口径对比；「50-50 不动」是严格一半一半买入后不调仓（与你设的初始配比无关），默认不勾选；红三角＝补仓、绿箭头＝减仓；鼠标悬停看当日各条曲线数值与当日成交价。资金差距过大时勾上「对数坐标」更易读。</li>
           <li data-i18n-html="guide.s3.li4"><b>组合横向对比</b>：同一区间内几组标的谁更强。</li>
           <li data-i18n-html="guide.s3.li5"><b>逐笔交易明细</b>：每次换仓的日期、方向、换了多少钱、<b>当天两端的成交价</b>（本模型按当日收盘价成交）、<b>成交后两端各自的持仓市值</b>、成交后总资金。</li>
@@ -440,7 +451,7 @@ document.write('<script src="data.js?v=9&t=' + SMH_CACHE_T + '"><\/script>');
 // 前端脚本同样附加 token：Safari 等浏览器对 index.html 自身的缓存很顽固，
 // 只靠手动 bump ?v= 时，拿到旧 index.html 的用户仍会继续加载旧 JS。
 (function () {
-  var files = ['i18n.js?v=16', 'backtest.js?v=17', 'app.js?v=34'];
+  var files = ['i18n.js?v=17', 'backtest.js?v=17', 'app.js?v=34'];
   for (var i = 0; i < files.length; i++) {
     document.write('<script src="' + files[i] + '&t=' + SMH_CACHE_T + '"><\/script>');
   }
