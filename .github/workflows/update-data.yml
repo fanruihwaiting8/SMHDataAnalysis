@@ -6,10 +6,15 @@ name: Update price data
 # 触发方式：
 #   1) 页面上的「🔄 更新最新数据（云端）」按钮 —— 走 REST API workflow_dispatch
 #   2) Actions 页面手动 Run workflow
-#   3) 定时：美东收盘后（22:30 UTC，周二~周六 ≈ 周一~周五收盘）
+#   3) 定时 A：每天荷兰时间 09:00（取前一交易日美股收盘数据）
+#      GitHub cron 只认 UTC 且不随夏令时变动，故挂 07:00 + 08:00 UTC 两条，
+#      再由下面的 "Gate" 步骤按 Europe/Amsterdam 实际小时判定，只放行真正的 9 点那次。
+#   4) 定时 B：美东收盘后（22:30 UTC，周二~周六 ≈ 周一~周五收盘），当天就能看到最新行情
 on:
   workflow_dispatch:
   schedule:
+    - cron: '0 7 * * *'
+    - cron: '0 8 * * *'
     - cron: '30 22 * * 2-6'
 
 permissions:
@@ -23,7 +28,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # 判定本次是否真的要跑：07:00/08:00 UTC 两条 cron 里只放行荷兰本地 09 点那一次
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          utc_h=$(date -u +%H)
+          if [ "$utc_h" != "07" ] && [ "$utc_h" != "08" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          nl_h=$(TZ=Europe/Amsterdam date +%H)
+          echo "UTC=${utc_h} Amsterdam=${nl_h}"
+          if [ "$nl_h" = "09" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "非荷兰时间 09 点，跳过本次"
+          fi
+
   update:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.commit.outputs.changed }}
