@@ -4,6 +4,10 @@
 const DRAWDOWN_LEVELS = [15, 25, 35, 45, 50];
 const REBOUND_LEVELS = [50, 100, 200];
 const TROUGH_TRIGGER_PCT = 25.0;
+// 初始有效底部的回看窗口（交易日）：建仓日的初始反弹基准 = 建仓日及其之前该天数
+// 区间内的最低收盘价。用区间最低价而非建仓日单点价，可避免「进场日悬崖」——同一轮
+// 行情里相邻几周进场、最终收益相差数倍。与 backtest.py 的同名常量一致。
+const INIT_TROUGH_DAYS = 60;
 // 仅用于「当前处于哪个阶段」的文案判定：自有效底部回升超过该幅度视为"底部反弹"，
 // 否则视为仍在"探底"。不参与任何交易判定，与 backtest.py 的同名常量一致。
 const PHASE_REBOUND_PCT = 10.0;
@@ -88,7 +92,14 @@ const smhSeries = seriesMap(keyA);
   let smh3Shares = capB / p0b;
 
   let peak = p0a;
+  // 初始有效底部：取建仓日及其之前 INIT_TROUGH_DAYS 个交易日的区间最低价
+  // （数据不足则按实有天数），消除「买在哪一天」对换回触发价的单点敏感。
+  const i0 = allCommon.indexOf(start);
   let activeTrough = p0a;
+  for (const d of allCommon.slice(Math.max(0, i0 - INIT_TROUGH_DAYS), i0 + 1)) {
+    const v = smhSeries[d];
+    if (v > 0 && v < activeTrough) activeTrough = v;
+  }
   const ddFired = new Set();
   const rbFired = new Set();
 
@@ -171,17 +182,20 @@ const smhSeries = seriesMap(keyA);
       }
     }
 
-    if (pa > peak) {
+    // 创新高当日仍要判断反弹减仓（高点恰落在创新高当日时不应整日跳过）；
+    // 当日回撤为 0，补仓与底部刷新本就不会触发。
+    const isNewHigh = pa > peak;
+    let ddPct = 0.0;
+    if (isNewHigh) {
       peak = pa;
       ddFired.clear();
       segActive = false;
       segLow = null;
-      continue;
+    } else {
+      if (segLow === null || pa < segLow) segLow = pa;
+      ddPct = ((peak - pa) / peak) * 100.0;
     }
 
-    if (segLow === null || pa < segLow) segLow = pa;
-
-    const ddPct = ((peak - pa) / peak) * 100.0;
     for (const lv of DRAWDOWN_LEVELS) {
       if (ddFired.has(lv)) continue;
       if (ddPct >= lv) {
@@ -419,13 +433,14 @@ function replayState(keyA, keyB, onDay) {
       }
     }
 
+    } // end else（非创新高日）
+
+    // 反弹档触发判定：创新高当日同样参与（与 runBacktest / backtest.py 一致）
     const rbPct = activeTrough > 0
       ? ((price - activeTrough) / activeTrough) * 100.0 : 0.0;
     for (const lv of REBOUND_LEVELS) {
       if (!rbFired.has(lv) && rbPct >= lv) rbFired.add(lv);
     }
-
-    } // end else（非创新高日）
 
     if (onDay) {
       // 对外暴露的跌幅/涨幅统一把负值夹到 0（与桌面 GUI 一致）

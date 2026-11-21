@@ -13,8 +13,12 @@ SMH / SOXL 补仓减仓策略回测引擎
   · 回撤补仓：SMH 现价相对 peak 回撤达 -X%，且该档本轮未触发，
     则卖出当前 SMH 市值的 drawdowns[X]%，资金全部转买 SOXL。
       档位：DRAWDOWN_LEVELS = [15, 25, 35, 45, 50]
-  · 反弹点定义（有效底部 active_trough）：初始为建仓日价格——若买入点恰在
-    低位，此后即使从未触发回撤补仓，只要相对建仓价上涨达标也应减仓。
+  · 反弹点定义（有效底部 active_trough）：初始为“建仓日及其之前 INIT_TROUGH_DAYS
+    (=60)个交易日的区间最低价”——若买入点恰在低位，此后即使从未触发回撤补仓，
+    只要相对该底部上涨达标也应减仓。之所以不用建仓日单点价，是因为单点价会让
+    换回触发价完全取决于“买在哪一天”，实测同一轮行情里相邻几周建仓的结果可相差
+    数倍（买贵一点→触发价被抬高→整轮大跌都没去杠杆）；取建仓前 60 日的区间最低
+    价作初始底部可消除这种“进场日悬崖”，且多起点回测收益不降、最大回撤略改善。
     此后每当价格自“最近一次历史新高 peak”回撤达到 TROUGH_TRIGGER_PCT（=25%）
     时，本段（两个相邻历史新高之间）即被认定为一个有效底部段：其底部 = 该段
     从新高回落直到再次创新高之前的“区间最低价”。该底部相对上一个历史新高是低点，
@@ -28,6 +32,9 @@ SMH / SOXL 补仓减仓策略回测引擎
     反弹涨幅持续累计，直到出现新的（回撤≥25%的）底部段并跌出更低价才重算。
       档位：REBOUND_LEVELS = [50, 100, 200]
   · 重置：SMH 创新高时 peak 上移、回撤档清空、结束本底部段跟踪；有效底部保留。
+    创新高当日不做回撤补仓（回撤为 0，本来也不会触发），但仍要做反弹减仓判断——
+    否则高点恰好落在“创新高当日”时整档减仓会被白白跳过（实测 2024 年就出现过
+    SMH 擦边新高当日达到 +200% 却不换回、随后满仓杠杆扛完大跌的情况）。
   · 资金只在 SMH ↔ SOXL 间转换，无额外现金。
   · 输出：截止最新一日两仓位市值及总资金。
 """
@@ -39,6 +46,11 @@ REBOUND_LEVELS = [50, 100, 200]
 # 有效底部触发阈值：价格自最近一次历史新高回撤达到该幅度(%)时，
 # 本段（两相邻新高之间）的区间最低点即被认定为反弹减仓基准 active_trough
 TROUGH_TRIGGER_PCT = 25.0
+
+# 初始有效底部的回看窗口（交易日）：建仓日的初始反弹基准 = 建仓日及其之前
+# 该天数区间内的最低收盘价。用区间最低价而非建仓日单点价，可避免“进场日悬崖”
+# （同一轮行情里相邻几周进场、最终收益相差数倍）。数据不足该天数时按实有天数取。
+INIT_TROUGH_DAYS = 60
 
 # 阶段判定用：在「有效底部已成立」的那一轮里，现价自底部反弹超过该幅度(%)
 # 才认为进入「底部反弹」阶段，否则仍算「深度回撤探底」。
@@ -160,20 +172,25 @@ def run_backtest(smh_capital: float, smh3_capital: float,
 
     # 基准
     peak = smh_price0            # SMH 历史新高（回撤补仓的基准，创新高即上移）
-    # 反弹点 active_trough：有效底部。建仓日价格本身即作为初始有效底部——
-    # 若买入点恰在低位，此后即使从未触发回撤补仓，只要相对建仓价上涨达标也应减仓。
+    # 反弹点 active_trough：有效底部。初始底部 = 建仓日及其之前 INIT_TROUGH_DAYS
+    # 个交易日的区间最低价——若买入点恰在低位，此后即使从未触发回撤补仓，只要相对
+    # 该底部上涨达标也应减仓。用区间最低价而非建仓日单点价，是为了消除“进场日悬崖”
+    # （买贵一点就把换回触发价整体抬高、整轮大跌都不去杠杆）。
     # 之后每当价格自 peak 回撤达到 TROUGH_TRIGGER_PCT（=25%）时，本段（两相邻新高
     # 之间）即被认定为一个有效底部段，其底部 = 该段区间最低价；段内继续下探则底部
     # 跟随下移，直到再次创新高才结束本段。创新高不清空底部，旧的有效底部保持不变，
     # 直到出现新的（回撤≥25%的）底部段并跌出更低价才刷新。
-    active_trough = smh_price0
+    _i0 = all_common.index(start_date)
+    _init_window = all_common[max(0, _i0 - INIT_TROUGH_DAYS):_i0 + 1]
+    active_trough = min(smh_series[d] for d in _init_window)
     dd_fired = set()             # 相对当前 peak 已触发的回撤补仓档
     rb_fired = set()             # 相对当前 active_trough 已触发的反弹减仓档
 
     trades = []
     # 记录模型认定的“底部/反弹点”，供 GUI 展示：建仓日先记一条初始底部；此后每形成
     # 一个更低的底部段记一条，段内价格继续下探则更新该条为更低价，避免逐日刷屏。
-    troughs = [(start_date, active_trough, "建仓日初始底部（反弹点）")]
+    troughs = [(start_date, active_trough,
+                f"建仓日初始底部（建仓前{INIT_TROUGH_DAYS}交易日区间最低价）")]
     seg_active = False            # 本段回撤是否已达 25%（即本段是否已认定有效底部）
     seg_low = None                # 本段（自上个新高以来）跟踪到的区间最低价
 
@@ -211,21 +228,26 @@ def run_backtest(smh_capital: float, smh3_capital: float,
         # 结束上一段的最低点跟踪。但有效底部 active_trough 不清空——若创新高后
         # 回撤未达 25% 就不产生新底部，反弹减仓仍相对既有 active_trough 计算；
         # 直到某段回撤再次达 25% 并跌出更低价，才刷新有效底部。
-        if smh_price > peak:
+        # 创新高当日仍要判断反弹减仓：高点恰落在创新高当日时，若直接跳过整日，
+        # 该反弹档会被永久错过（新高后价格回落，等下次够到同一档可能已是数年后，
+        # 期间满仓杠杆端扛完大跌）。创新高当日回撤为 0，补仓与底部刷新本就不会
+        # 触发，因此这里把 dd_pct 置 0 并跳过段内最低价跟踪即可。
+        is_new_high = smh_price > peak
+        if is_new_high:
             peak = smh_price
             dd_fired.clear()
             seg_active = False
             seg_low = None
-            continue  # 新高当日不触发买卖
-
-        # ===== 跟踪本段区间最低价 =====
-        # 自上个新高以来，逐日更新本段最低价 seg_low
-        if seg_low is None or smh_price < seg_low:
-            seg_low = smh_price
+            dd_pct = 0.0
+        else:
+            # ===== 跟踪本段区间最低价 =====
+            # 自上个新高以来，逐日更新本段最低价 seg_low
+            if seg_low is None or smh_price < seg_low:
+                seg_low = smh_price
+            # 回撤幅度（相对 peak，正数）
+            dd_pct = (peak - smh_price) / peak * 100.0
 
         # ===== 回撤补仓：卖 SMH 买 SOXL =====
-        # 回撤幅度（相对 peak，正数）
-        dd_pct = (peak - smh_price) / peak * 100.0
         for lv in DRAWDOWN_LEVELS:
             if lv in dd_fired:
                 continue
@@ -274,10 +296,11 @@ def run_backtest(smh_capital: float, smh3_capital: float,
                     date, active_trough, "回撤≥25%区间最低点（反弹点）")
 
         # ===== 反弹减仓：卖 SOXL 买 SMH =====
-        # 有效底部 active_trough 初始为建仓价，此后每当某段回撤达 25% 就刷新为该段
-        # 区间最低价（无论比以前高低）。反弹幅度相对当前有效底部累计计算：即使从未回撤
-        # 到 25%（买在低点后一路上涨），只要相对建仓价上涨达标也会减仓；创新高不会清空
-        # 底部，反弹涨幅持续累计，直到下一段回撤≥25%形成本段自己的新底部才刷新重算。
+        # 有效底部 active_trough 初始为建仓前 60 个交易日的区间最低价，此后每当某段
+        # 回撤达 25% 就刷新为该段区间最低价（无论比以前高低）。反弹幅度相对当前有效
+        # 底部累计计算：即使从未回撤到 25%（买在低点后一路上涨），只要相对初始底部
+        # 上涨达标也会减仓；创新高不会清空底部，反弹涨幅持续累计，直到下一段回撤≥25%
+        # 形成本段自己的新底部才刷新重算。创新高当日同样参与本判断。
         if active_trough is not None and active_trough > 0:
             rb_pct = (smh_price - active_trough) / active_trough * 100.0
         else:
@@ -383,7 +406,9 @@ def compute_live_state(smh_csv, smh3_csv):
     for date in all_common[1:]:
         price = smh_series[date]
 
-        # 创新高：peak 上移、清 dd_fired、结束本段最低点跟踪
+        # 创新高：peak 上移、清 dd_fired、结束本段最低点跟踪。
+        # 与 run_backtest 一致：创新高当日不做补仓/底部刷新（回撤为 0），
+        # 但仍参与下方反弹档的触发判定。
         if price > peak:
             peak = price
             peak_date = date
@@ -391,15 +416,14 @@ def compute_live_state(smh_csv, smh3_csv):
             seg_active = False
             seg_low = None
             seg_low_date = None
-            continue
-
-        # 跟踪本段区间最低价
-        if seg_low is None or price < seg_low:
-            seg_low = price
-            seg_low_date = date
-
-        # 回撤幅度（相对 peak）
-        dd_pct = (peak - price) / peak * 100.0
+            dd_pct = 0.0
+        else:
+            # 跟踪本段区间最低价
+            if seg_low is None or price < seg_low:
+                seg_low = price
+                seg_low_date = date
+            # 回撤幅度（相对 peak）
+            dd_pct = (peak - price) / peak * 100.0
 
         # 回撤档触发标记（只跟踪状态，不算资金）
         for lv in DRAWDOWN_LEVELS:

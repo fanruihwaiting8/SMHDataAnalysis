@@ -236,7 +236,7 @@
         <ul>
           <li data-i18n-html="guide.s1.li1"><b>回撤补仓（越跌越上杠杆）</b>：基准端（如 SMH）从历史最高点跌到 -15%/-25%/-35%… 某一档时，卖掉当时基准端市值的指定比例，全部买入杠杆端（如 SOXL）。每档在同一轮下跌中只触发一次。<br/><span class="hint">说人话：跌得越狠，挪去「放大版」的钱越多。</span></li>
           <li data-i18n-html="guide.s1.li2"><b>反弹减仓（涨回来就落袋）</b>：基准端从「有效底部」反弹 +50%/+100%/+200% 某一档时，卖掉当时杠杆端市值的指定比例，换回基准端。<br/><span class="hint">说人话：反弹到一定幅度，就把「放大版」赚到的钱收回来，换回稳的那只。</span></li>
-          <li data-i18n-html="guide.s1.li3"><b>有效底部</b>＝本轮自高点回撤超过 25% 后出现的最低价。小幅回调不算新底部，避免刚跌一点就被误判成「抄到底」。</li>
+          <li data-i18n-html="guide.s1.li3"><b>有效底部</b>＝本轮自高点回撤超过 25% 后出现的最低价。小幅回调不算新底部，避免刚跌一点就被误判成「抄到底」。建仓当天的初始底部取「建仓日及之前 60 个交易日的区间最低价」，这样同一轮行情里早几周、晚几周进场不会差出好几倍。</li>
         </ul>
       </details>
 
@@ -451,7 +451,7 @@ document.write('<script src="data.js?v=9&t=' + SMH_CACHE_T + '"><\/script>');
 // 前端脚本同样附加 token：Safari 等浏览器对 index.html 自身的缓存很顽固，
 // 只靠手动 bump ?v= 时，拿到旧 index.html 的用户仍会继续加载旧 JS。
 (function () {
-  var files = ['i18n.js?v=17', 'backtest.js?v=17', 'app.js?v=34'];
+  var files = ['i18n.js?v=18', 'backtest.js?v=18', 'app.js?v=34'];
   for (var i = 0; i < files.length; i++) {
     document.write('<script src="' + files[i] + '&t=' + SMH_CACHE_T + '"><\/script>');
   }

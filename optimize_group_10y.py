@@ -35,6 +35,11 @@ GROUPS = {
     "qqq": {"csv_a": "Input/QQQ_full_history.csv",
             "csv_b": "Input/TQQQ_full_history.csv",
             "name_a": "QQQ", "name_b": "TQQQ"},
+    # 实验组：市面上没有可交易的 4 倍半导体 ETF，B 端为 synth_lev4x.py
+    # 合成的 4 倍日收益序列（已扣 12.15%/年 费率+融资成本），仅供评估。
+    "lev4": {"csv_a": "Input/SMH_full_history.csv",
+             "csv_b": "Input/SMH4X_synth_history.csv",
+             "name_a": "SMH", "name_b": "SMH4X"},
 }
 
 CAP_A = 20000.0
@@ -75,7 +80,8 @@ def build_ctx(group_key: str, window: str = "10y", dca_pct: float = 0.0):
         "N": len(common), "start_date": start_date,
         "total": CAP_A + CAP_B, "label": label,
     }
-    ctx["events"] = build_events(ctx["AP"])
+    ctx["init_trough"] = _init_trough(sa, all_common, common[0])
+    ctx["events"] = build_events(ctx["AP"], ctx["init_trough"])
     # 定投口径：预计算「每投入 1 元累计可买到的 A 份额」，
     # 注入与持仓无关、纯加性，故可在搜索前算一次。
     ctx["mc"] = (CAP_A + CAP_B) * dca_pct / 100.0
@@ -92,7 +98,17 @@ def build_ctx(group_key: str, window: str = "10y", dca_pct: float = 0.0):
     return ctx
 
 
-def build_events(AP):
+def _init_trough(sa, all_common, entry_date):
+    """建仓日初始有效底部 = 建仓日及其之前 bt.INIT_TROUGH_DAYS 个交易日的
+    区间最低收盘价（数据不足按实有天数）。与 backtest.py 口径一致。
+    entry_date 必须是真实交易日（即窗口内第一个共同交易日）。"""
+    i0 = all_common.index(entry_date)
+    window = all_common[max(0, i0 - bt.INIT_TROUGH_DAYS):i0 + 1]
+    vals = [sa[d] for d in window if sa[d] > 0]
+    return min(vals) if vals else sa[entry_date]
+
+
+def build_events(AP, init_trough=None):
     """预计算补仓/减仓触发事件序列。
 
     触发时点只取决于基准端 A 的价格序列（新高清空补仓已触发档、
@@ -100,23 +116,30 @@ def build_events(AP):
     在网格搜索前算一次，之后每个参数组合只需遍历几十个事件，
     而不是几千个交易日。
     返回 [(i, kind, level)]，kind=0 补仓 / 1 减仓。
+
+    init_trough：初始有效底部，默认取 AP[0]。调用方应传入「建仓日
+    及其之前 bt.INIT_TROUGH_DAYS 个交易日的区间最低收盘价」，与
+    backtest.py 对齐，避免「进场日悬崖」。
     """
     N = len(AP)
     events = []
     peak = AP[0]
-    active_trough = AP[0]
+    active_trough = AP[0] if init_trough is None else init_trough
     dd_fired, rb_fired = set(), set()
     seg_active, seg_low = False, None
     for i in range(1, N):
         p = AP[i]
+        # 创新高当日仍参与反弹减仓判定（与 backtest.py 一致）：当日回撤为 0，
+        # 补仓与底部刷新本就不会触发，只需跳过段内最低价跟踪。
         if p > peak:
             peak = p
             dd_fired.clear()
             seg_active, seg_low = False, None
-            continue
-        if seg_low is None or p < seg_low:
-            seg_low = p
-        dd_pct = (peak - p) / peak * 100.0
+            dd_pct = 0.0
+        else:
+            if seg_low is None or p < seg_low:
+                seg_low = p
+            dd_pct = (peak - p) / peak * 100.0
         for lv in DD_LEVELS:
             if lv in dd_fired:
                 continue
@@ -197,7 +220,7 @@ def fast_total_slow(ctx, dd_pcts, rb_pcts):
     a_sh = CAP_A / AP[0]
     b_sh = CAP_B / BP[0]
     peak = AP[0]
-    active_trough = AP[0]
+    active_trough = ctx.get("init_trough") or AP[0]
     dd_fired, rb_fired = set(), set()
     seg_active, seg_low = False, None
     for i in range(1, N):
@@ -205,14 +228,16 @@ def fast_total_slow(ctx, dd_pcts, rb_pcts):
         if mc > 0 and YM[i] != last_month:
             last_month = YM[i]
             a_sh += mc / p
+        # 创新高当日仍参与反弹减仓判定（与 backtest.py 一致）
         if p > peak:
             peak = p
             dd_fired.clear()
             seg_active, seg_low = False, None
-            continue
-        if seg_low is None or p < seg_low:
-            seg_low = p
-        dd_pct = (peak - p) / peak * 100.0
+            dd_pct = 0.0
+        else:
+            if seg_low is None or p < seg_low:
+                seg_low = p
+            dd_pct = (peak - p) / peak * 100.0
         for lv in DD_LEVELS:
             if lv in dd_fired:
                 continue
