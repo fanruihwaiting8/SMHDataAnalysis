@@ -79,6 +79,35 @@
     background: var(--card); white-space: nowrap; user-select: none;
   }
   .langbar span.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+  /* 高级模式：右上角开关 + 密码浮层 */
+  .langbar span#proBtn.on { background: #8957e5; border-color: #8957e5; }
+  .pro-mask {
+    position: fixed; inset: 0; background: rgba(1,4,9,.72);
+    display: none; align-items: center; justify-content: center; z-index: 99;
+  }
+  .pro-mask.show { display: flex; }
+  .pro-panel {
+    width: 340px; max-width: calc(100vw - 32px); background: var(--card);
+    border: 1px solid var(--border); border-radius: 12px; padding: 18px 18px 16px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.55);
+  }
+  .pro-panel h3 { margin: 0 0 4px; font-size: 15px; }
+  .pro-panel .pp-sub { font-size: 12px; color: var(--muted); line-height: 1.6; margin-bottom: 12px; }
+  .pro-panel label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+  .pro-panel input { width: 100%; box-sizing: border-box; }
+  .pro-panel .pp-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .pro-panel .pp-msg { font-size: 12px; margin-top: 10px; min-height: 16px; line-height: 1.5; }
+  .pro-panel .pp-msg.err { color: #f85149; }
+  .pro-panel .pp-msg.ok { color: var(--accent); }
+  .pro-sec { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 12px; }
+  /* 非高级模式下隐藏的元素 */
+  .pro-only { display: none !important; }
+  body.pro .pro-only { display: inline-flex !important; }
+  body.pro .pro-only.blk { display: block !important; }
+  /* 档位输入框下方的推荐区间提示 */
+  .band { font-size: 11px; color: #8b949e; margin-top: 3px; line-height: 1.4; }
+  .band b { color: var(--accent); font-weight: 700; }
+  .band.out { color: #f0883e; }
   /* 定投勾选框 */
   .chk {
     display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
@@ -199,10 +228,50 @@
       <div class="sub" data-i18n-html="hdr.sub">纯浏览器运行，调参后实时重算。SMH=1x 基准端，SOXL/TQQQ/USD=杠杆端。<br/>
         历史数据模拟回测，非市场预测，不构成投资建议 —— 请阅读<a href="#disclaimer" style="color:#f0883e">页面底部免责声明</a>。</div>
     </div>
-    <!-- 语言切换器：右上角，中/英两档 -->
+    <!-- 语言切换器 + 高级模式开关：右上角 -->
     <div class="langbar" id="langbar">
       <span data-lang-btn="zh" data-i18n="lang.zh">中文</span>
       <span data-lang-btn="en" data-i18n="lang.en">English</span>
+      <span id="proBtn" data-i18n="pro.btn" data-i18n-title="pro.btn.title" title="高级模式：需要密码，解锁后可使用实验性数据源组合">🔒 高级模式</span>
+    </div>
+  </div>
+
+  <!-- 高级模式浮层：未解锁时输入密码；已解锁时可改密码 / 退出 -->
+  <div class="pro-mask" id="proMask">
+    <div class="pro-panel">
+      <h3 data-i18n="pro.title">高级模式</h3>
+      <div class="pp-sub" data-i18n="pro.sub">高级模式会解锁实验性的数据源组合（研究用途，稳健性弱于默认组合）。</div>
+      <!-- 未解锁 -->
+      <div id="proLockView">
+        <label data-i18n="pro.pw">访问密码</label>
+        <input id="proPw" type="password" autocomplete="current-password" />
+        <div class="pp-btns">
+          <button id="proUnlock" data-i18n="pro.unlock">解锁</button>
+          <button class="ghost" id="proClose1" data-i18n="pro.close">关闭</button>
+        </div>
+      </div>
+      <!-- 已解锁 -->
+      <div id="proUnlockView" style="display:none">
+        <div class="pp-sub" data-i18n="pro.on">✅ 高级模式已开启。</div>
+        <div class="pro-sec">
+          <div style="font-size:13px;font-weight:700" data-i18n="pro.chg">修改密码</div>
+          <label data-i18n="pro.old">当前密码</label>
+          <input id="proOld" type="password" autocomplete="current-password" />
+          <label data-i18n="pro.new">新密码（至少 6 位）</label>
+          <input id="proNew" type="password" autocomplete="new-password" />
+          <label data-i18n="pro.new2">确认新密码</label>
+          <input id="proNew2" type="password" autocomplete="new-password" />
+          <div class="pp-btns">
+            <button id="proSave" data-i18n="pro.save">保存新密码</button>
+            <button class="ghost" id="proReset" data-i18n="pro.reset">重置为默认</button>
+          </div>
+        </div>
+        <div class="pp-btns">
+          <button class="ghost" id="proExit" data-i18n="pro.exit">退出高级模式</button>
+          <button class="ghost" id="proClose2" data-i18n="pro.close">关闭</button>
+        </div>
+      </div>
+      <div class="pp-msg" id="proMsg"></div>
     </div>
   </div>
   <div style="margin: 0 0 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
@@ -285,6 +354,7 @@
           <option value="SMH" data-i18n="param.src.SMH">SMH / SOXL（半导体·3x）</option>
           <option value="QQQ" data-i18n="param.src.QQQ">QQQ / TQQQ（纳指100·3x）</option>
           <option value="USD" data-i18n="param.src.USD">SMH / USD（半导体·2x）</option>
+          <option value="QS" data-pro="1" data-i18n="param.src.QS">QQQ / SOXL（纳指信号 + 半导体3x）🔬</option>
         </select>
       </div>
       <div class="field">
@@ -327,6 +397,7 @@
       <div class="lbl" data-i18n="param.rbLbl">▲ 反弹减仓：基准端相对有效底部反弹达标时，卖出杠杆端市值的百分比转买基准端</div>
       <div class="status rb" id="rbStatus"></div>
       <div class="row" id="rbRow"></div>
+      <div class="note" data-i18n-html="band.note">灰色小字是该档位的<b>推荐区间</b>（由多起点鲁棒性搜索给出，区间内参数表现接近，不必纠结单点）；填入的数值落在区间外时会标红提示，仅作参考不影响计算。</div>
     </div>
     <div class="grp row">
       <button id="run" data-i18n="btn.run">运行回测</button>
@@ -372,6 +443,7 @@
       <span data-k="SMH" class="on">SMH / SOXL</span>
       <span data-k="QQQ">QQQ / TQQQ</span>
       <span data-k="USD" class="on">SMH / USD</span>
+      <span data-k="QS" class="pro-only">QQQ / SOXL 🔬</span>
     </div>
     <div class="note" style="margin-bottom:10px" data-i18n="cmp.note">
       勾选想对比的组合。对比区间跟随上方「起始/截止日期」的设定：各组均在你设定的范围内计算，便于同期对比。若某组的标的数据晚于你设定的起点（如 SMH 仅有近 10 年数据），则该组从其数据首日起算。未设起点时，才会兜底为勾选组合涉及标的中最晚的上市日。
@@ -456,7 +528,7 @@ document.write('<script src="data.js?v=9&t=' + SMH_CACHE_T + '"><\/script>');
 // 前端脚本同样附加 token：Safari 等浏览器对 index.html 自身的缓存很顽固，
 // 只靠手动 bump ?v= 时，拿到旧 index.html 的用户仍会继续加载旧 JS。
 (function () {
-  var files = ['i18n.js?v=19', 'backtest.js?v=19', 'app.js?v=34'];
+  var files = ['i18n.js?v=20', 'backtest.js?v=19', 'app.js?v=35'];
   for (var i = 0; i < files.length; i++) {
     document.write('<script src="' + files[i] + '&t=' + SMH_CACHE_T + '"><\/script>');
   }

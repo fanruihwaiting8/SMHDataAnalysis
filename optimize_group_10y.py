@@ -35,6 +35,10 @@ GROUPS = {
     "qqq": {"csv_a": "Input/QQQ_full_history.csv",
             "csv_b": "Input/TQQQ_full_history.csv",
             "name_a": "QQQ", "name_b": "TQQQ"},
+    # 跨指数组：基准端走宽基纳指 QQQ，杠杆端仍用半导体 3 倍 SOXL
+    "qs": {"csv_a": "Input/QQQ_full_history.csv",
+           "csv_b": "Input/SOXL_full_history.csv",
+           "name_a": "QQQ", "name_b": "SOXL"},
     # 实验组：市面上没有可交易的 4 倍半导体 ETF，B 端为 synth_lev4x.py
     # 合成的 4 倍日收益序列（已扣 12.15%/年 费率+融资成本），仅供评估。
     "lev4": {"csv_a": "Input/SMH_full_history.csv",

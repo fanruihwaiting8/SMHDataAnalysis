@@ -8,34 +8,67 @@
     SMH: { a: "SMH", b: "SOXL", na: "SMH", nb: "SOXL" },
     QQQ: { a: "QQQ", b: "TQQQ", na: "QQQ", nb: "TQQQ" },
     USD: { a: "SMH", b: "USD", na: "SMH", nb: "USD" },
+    // 高级模式专属：用纳指(QQQ)做回撤/反弹信号，杠杆端换成半导体 3x(SOXL)。
+    // 跨指数组合，历史表现明显弱于 SMH/SOXL，仅作研究对比，默认隐藏。
+    QS: { a: "QQQ", b: "SOXL", na: "QQQ", nb: "SOXL", pro: true },
   };
-  // 推荐参数（各数据源各自“全量历史窗口”收益最大化网格搜索结果，
-  // 与 Python 脚本 optimize_group_10y.py <组> all 及 main.py 的
-  // DATA_SOURCES 推荐值完全一致）。
-  // 默认 REC_DD/REC_RB 用 SMH 口径（页面初始数据源即 SMH）。
-  const REC_DD = { 15: 0, 25: 45, 35: 100, 45: 0, 50: 0 };
+  // 推荐参数（tools/optimize_robust_bands.py 三段式搜索结果：
+  //   Phase 1 带护栏的全网格（最大回撤上限 + 深档留弹药额度）
+  //   Phase 2 多起点鲁棒性评估（17 个年初起点的中位/最差）
+  //   Phase 3 近优鲁棒集合 -> 每档取值区间 + 区间中心
+  // 取「区间中心」作为推荐单点，并在页面上同时展示整个推荐区间。
+  // 与早期「收益最大化单点」相比，末值略降但多起点最差情形大幅改善
+  //（SMH 组：2065.7x/最差 0.87x -> 1893.3x/最差 9.02x）。
+  // 与 main.py 的 DATA_SOURCES 推荐值保持一致。
+  const REC_DD = { 15: 0, 25: 25, 35: 75, 45: 90, 50: 50 };
   const REC_RB = { 50: 0, 100: 0, 200: 100 };
   // 按数据源区分的推荐参数（未列出的源回退到上面的 REC_DD/REC_RB）
   const REC_BY_SOURCE = {
-    // SMH/SOXL（全量 2010-03-11~2026-11-02，共 4188 日）：
-    // 回撤 -25% 换 45%、-35% 剩余全换 SOXL，反弹 +200% 全撤回 SMH。
+    // SMH/SOXL（全量 2010-03-11 起，护栏 cap 82%）：
+    // 全窗 1893.3x / -78.7%，多起点中位 391.7x、最差 9.02x
     SMH: {
-      dd: { 15: 0, 25: 45, 35: 100, 45: 0, 50: 0 },
+      dd: { 15: 0, 25: 25, 35: 75, 45: 90, 50: 50 },
       rb: { 50: 0, 100: 0, 200: 100 },
     },
-    // QQQ/TQQQ（全量 2010-02-11~2026-11-03，共 4208 日）：
-    // 回撤 -15% 换 90%、-35% 剩余全换 TQQQ，反弹 +100% 全撤回 QQQ。
+    // QQQ/TQQQ（全量 2010-02-11 起，护栏 cap 75%）：
+    // 全窗 234.5x / -68.5%，多起点中位 26.1x、最差 1.84x
     QQQ: {
-      dd: { 15: 90, 25: 0, 35: 100, 45: 0, 50: 0 },
+      dd: { 15: 60, 25: 10, 35: 25, 45: 50, 50: 50 },
       rb: { 50: 0, 100: 100, 200: 0 },
     },
-    // SMH/USD（近 10 年窗口 2016-11~2026-11 带护栏搜索，含「深档留弹药」约束）：
-    // 回撤 -35% 换 75%、-45% 再换 75%、-50% 剩余全换 USD，反弹 +200% 全撤回 SMH。
-    // 与旧的收益最大化档位（-25%换80%/-35%换95%/-45%全换）相比 10 年收益基本持平
-    // （121.9x vs 121.5x），最大回撤由 -64.9% 降至 -54.9%，且深档仍留有额度。
+    // SMH/USD（近 10 年窗口，护栏 cap 60%）：
+    // 10 年 116.7x / -57.9%，多起点中位 44.5x、最差 5.81x
     USD: {
-      dd: { 15: 0, 25: 0, 35: 75, 45: 75, 50: 100 },
+      dd: { 15: 0, 25: 25, 35: 75, 45: 100, 50: 50 },
       rb: { 50: 0, 100: 0, 200: 100 },
+    },
+    // QQQ/SOXL（高级模式，全量 2010-02-11 起，护栏 cap 85%）：
+    // 全窗 130.2x / -79.3%，多起点中位 35.0x、最差 1.47x
+    QS: {
+      dd: { 15: 25, 25: 25, 35: 50, 45: 50, 50: 50 },
+      rb: { 50: 0, 100: 100, 200: 0 },
+    },
+  };
+  // 推荐区间：[下限, 上限, 中心]（单位 %）。
+  // 区间含义 = 护栏约束下，末值仍在最优值 85% 以上、且多起点最差情形不低于
+  // 最优组最差值 70% 的全部近优鲁棒方案在该档上出现过的取值范围。
+  // 上下限相等表示该档在所有近优方案里取值一致（强约束档）。
+  const REC_BANDS = {
+    SMH: {
+      dd: { 15: [0, 0], 25: [0, 25], 35: [50, 75], 45: [50, 100], 50: [25, 75] },
+      rb: { 50: [0, 0], 100: [0, 0], 200: [100, 100] },
+    },
+    QQQ: {
+      dd: { 15: [50, 75], 25: [0, 25], 35: [0, 50], 45: [25, 75], 50: [25, 75] },
+      rb: { 50: [0, 0], 100: [100, 100], 200: [0, 0] },
+    },
+    USD: {
+      dd: { 15: [0, 0], 25: [0, 25], 35: [50, 75], 45: [75, 100], 50: [25, 75] },
+      rb: { 50: [0, 0], 100: [0, 0], 200: [100, 100] },
+    },
+    QS: {
+      dd: { 15: [25, 25], 25: [0, 50], 35: [50, 75], 45: [25, 75], 50: [25, 75] },
+      rb: { 50: [0, 0], 100: [100, 100], 200: [0, 0] },
     },
   };
 
@@ -171,15 +204,41 @@
     $("ddRow").innerHTML = DD.map((lv) =>
       `<div class="field"><label>${T("inp.ddLabel", { lv: lv })}</label>
        <input class="dd" data-lv="${lv}" type="number" value="${REC_DD[lv]}" />
+       <div class="band" id="ddBand-${lv}"></div>
        <div class="trig" id="ddTrig-${lv}"></div>
        <div class="hist" id="ddHist-${lv}"></div></div>`
     ).join("");
     $("rbRow").innerHTML = RB.map((lv) =>
       `<div class="field"><label>${T("inp.rbLabel", { lv: lv })}</label>
        <input class="rb" data-lv="${lv}" type="number" value="${REC_RB[lv]}" />
+       <div class="band" id="rbBand-${lv}"></div>
        <div class="trig" id="rbTrig-${lv}"></div>
        <div class="hist" id="rbHist-${lv}"></div></div>`
     ).join("");
+    updateBands();
+  }
+
+  // 在每个档位输入框下方显示该档的「推荐区间」，并在当前值越界时变橙提示。
+  // 区间按一次性投入口径搜索得到；勾选每月定投时推荐单点会变，区间仅作参考。
+  function updateBands() {
+    const src = $("source") ? $("source").value : "SMH";
+    const band = REC_BANDS[src] || REC_BANDS.SMH;
+    const rec = recOf(src, false);
+    [["dd", DD], ["rb", RB]].forEach(([kind, levels]) => {
+      levels.forEach((lv) => {
+        const el = $(`${kind}Band-${lv}`);
+        if (!el) return;
+        const b = band[kind] && band[kind][lv];
+        if (!b) { el.innerHTML = ""; return; }
+        const c = rec[kind][lv];
+        el.innerHTML = T("band." + kind, { lo: b[0], hi: b[1], c: c });
+        const inp = document.querySelector(`.${kind}[data-lv="${lv}"]`);
+        const v = inp ? (+inp.value || 0) : c;
+        const out = v < b[0] || v > b[1];
+        el.classList.toggle("out", out);
+        el.title = out ? T("band.out", { lo: b[0], hi: b[1] }) : "";
+      });
+    });
   }
 
   function readParams() {
@@ -199,8 +258,8 @@
     const rec = recOf($("source").value, dcaOn());
     document.querySelectorAll(".dd").forEach((el) => el.value = rec.dd[+el.dataset.lv]);
     document.querySelectorAll(".rb").forEach((el) => el.value = rec.rb[+el.dataset.lv]);
+    updateBands();
   }
-
   // ---- 起始日在历史价格空间中的位置 ----
   // phaseTimeline 的 peak / activeTrough 是从数据最早一天累积的，正好能回答
   // 「我选的起始日，当时价格处在历史的什么位置」。
@@ -1324,12 +1383,13 @@
     { key: "SMH", a: "SMH", b: "SOXL", label: "SMH / SOXL" },
     { key: "QQQ", a: "QQQ", b: "TQQQ", label: "QQQ / TQQQ" },
     { key: "USD", a: "SMH", b: "USD", label: "SMH / USD" },
+    { key: "QS", a: "QQQ", b: "SOXL", label: "QQQ / SOXL", pro: true },
   ];
 
   function checkedCmpGroups() {
     const on = {};
     document.querySelectorAll("#cmpToggle span").forEach((s) => on[s.dataset.k] = s.classList.contains("on"));
-    return CMP_GROUPS.filter((g) => on[g.key]);
+    return CMP_GROUPS.filter((g) => on[g.key] && (!g.pro || proOn()));
   }
 
   // 勾选组合共用的统一起点 = 所涉及全部标的中"最晚的起始日"（它们共同都有数据的最早一天）。
@@ -1409,11 +1469,141 @@
     $("cmpBody").innerHTML = rows.join("");
   }
 
+  // ---- 高级模式（密码解锁，解锁后出现实验性数据源组合） ----
+  // 说明：这是纯前端的「入口遮挡」，不是安全边界 —— 页面所有代码和数据都在
+  // 浏览器里，懂行的人翻源码一样能看到。目的只是别让一般使用者误用实验性组合。
+  const PRO_LS_ON = "smh_pro_on";
+  const PRO_LS_PW = "smh_pro_pw_hash";
+  const PRO_DEFAULT_HASH = "ece802a4-bf499064-13";   // 默认密码 618618@jd.com
+  let _proOn = false;
+  // 被 CSS 隐藏的 <option> 在 Safari 里依旧可选，所以直接把节点摘下来保管
+  let _proOpts = [];
+
+  function hashPw(s) {
+    let h = 0x811c9dc5;                 // FNV-1a 32bit
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h * 0x01000193) >>> 0; }
+    let g = 5381;                       // djb2（混第二轮，降低碰撞）
+    for (let j = 0; j < s.length; j++) g = ((g * 33) ^ s.charCodeAt(j)) >>> 0;
+    return (h >>> 0).toString(16) + "-" + (g >>> 0).toString(16) + "-" + s.length;
+  }
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* 忽略 */ } }
+  function lsDel(k) { try { localStorage.removeItem(k); } catch (e) { /* 忽略 */ } }
+  function proHash() { return lsGet(PRO_LS_PW) || PRO_DEFAULT_HASH; }
+  function proOn() { return _proOn; }
+
+  function proMsg(key, cls) {
+    const el = $("proMsg");
+    if (!el) return;
+    el.textContent = key ? T(key) : "";
+    el.className = "pp-msg" + (cls ? " " + cls : "");
+  }
+
+  // 按当前解锁状态同步 UI：body class、按钮文案、<option> 的摘挂
+  function applyProUI() {
+    document.body.classList.toggle("pro", _proOn);
+    const btn = $("proBtn");
+    if (btn) {
+      btn.textContent = T(_proOn ? "pro.btn.on" : "pro.btn");
+      btn.classList.toggle("on", _proOn);
+    }
+    const sel = $("source");
+    if (sel) {
+      if (_proOn) {
+        // 还原之前摘下的高级选项（按原始顺序追加到末尾）
+        _proOpts.forEach((o) => { if (!o.parentNode) sel.appendChild(o); });
+        _proOpts = [];
+      } else {
+        const kept = [];
+        Array.prototype.slice.call(sel.options).forEach((o) => {
+          if (o.getAttribute("data-pro") === "1") { kept.push(o); sel.removeChild(o); }
+        });
+        if (kept.length) _proOpts = kept;
+        // 当前选中的恰好是被摘掉的高级源时，退回默认组合
+        if (!sel.value || !SOURCES[sel.value]) sel.value = "SMH";
+      }
+    }
+    const lock = $("proLockView"), un = $("proUnlockView");
+    if (lock) lock.style.display = _proOn ? "none" : "";
+    if (un) un.style.display = _proOn ? "" : "none";
+  }
+
+  function proOpen() {
+    proMsg("");
+    ["proPw", "proOld", "proNew", "proNew2"].forEach((id) => { if ($(id)) $(id).value = ""; });
+    applyProUI();
+    if ($("proMask")) $("proMask").classList.add("show");
+    if (!_proOn && $("proPw")) $("proPw").focus();
+  }
+  function proCloseMask() { if ($("proMask")) $("proMask").classList.remove("show"); }
+
+  // 解锁 / 退出后都要刷新：推荐参数、区间提示、横向对比表
+  function proRefresh() {
+    applyProUI();
+    fillRecommend();
+    if (window.__ready) { updateRange(true); run(); }
+  }
+
+  function proUnlockTry() {
+    const v = ($("proPw") && $("proPw").value) || "";
+    if (!v) { proMsg("pro.err.empty", "err"); return; }
+    if (hashPw(v) !== proHash()) { proMsg("pro.err.wrong", "err"); return; }
+    _proOn = true;
+    lsSet(PRO_LS_ON, "1");
+    proRefresh();
+    proMsg("pro.ok.unlock", "ok");
+  }
+  function proExit() {
+    _proOn = false;
+    lsDel(PRO_LS_ON);
+    proRefresh();
+    proMsg("pro.exited", "ok");
+  }
+  function proSavePw() {
+    const o = ($("proOld") && $("proOld").value) || "";
+    const n = ($("proNew") && $("proNew").value) || "";
+    const n2 = ($("proNew2") && $("proNew2").value) || "";
+    if (hashPw(o) !== proHash()) { proMsg("pro.err.wrong", "err"); return; }
+    if (n.length < 6) { proMsg("pro.err.short", "err"); return; }
+    if (n !== n2) { proMsg("pro.err.mismatch", "err"); return; }
+    lsSet(PRO_LS_PW, hashPw(n));
+    ["proOld", "proNew", "proNew2"].forEach((id) => { if ($(id)) $(id).value = ""; });
+    proMsg("pro.ok.saved", "ok");
+  }
+  function proResetPw() {
+    lsDel(PRO_LS_PW);
+    ["proOld", "proNew", "proNew2"].forEach((id) => { if ($(id)) $(id).value = ""; });
+    proMsg("pro.ok.reset", "ok");
+  }
+
+  function bindPro() {
+    const on = (id, fn) => { if ($(id)) $(id).addEventListener("click", fn); };
+    on("proBtn", proOpen);
+    on("proUnlock", proUnlockTry);
+    on("proClose1", proCloseMask);
+    on("proClose2", proCloseMask);
+    on("proSave", proSavePw);
+    on("proReset", proResetPw);
+    on("proExit", proExit);
+    if ($("proMask")) {
+      // 点浮层外的遮罩关闭
+      $("proMask").addEventListener("click", (e) => { if (e.target === $("proMask")) proCloseMask(); });
+    }
+    if ($("proPw")) {
+      $("proPw").addEventListener("keydown", (e) => { if (e.key === "Enter") proUnlockTry(); });
+    }
+  }
+
   // ---- 事件绑定 ----
   function bind() {
+    bindPro();
     $("run").addEventListener("click", run);
     $("source").addEventListener("change", () => { fillRecommend(); updateRange(true); run(); });
     $("recommend").addEventListener("click", () => { fillRecommend(); run(); });
+    // 改动任一档位数值时，刷新「是否落在推荐区间内」的提示（不重跑回测）
+    document.querySelectorAll(".dd, .rb").forEach((el) => {
+      el.addEventListener("input", updateBands);
+    });
     // 初始配比推荐：选好起始日期后点按钮才计算并展示（点一次后，改金额/日期会同步刷新）
     if ($("allocAdvise")) {
       $("allocAdvise").addEventListener("click", renderAllocTip);
@@ -1463,6 +1653,8 @@
         const el = f.querySelector(".rb"), lb = f.querySelector("label");
         if (el && lb) lb.textContent = T("inp.rbLabel", { lv: el.dataset.lv });
       });
+      updateBands();
+      applyProUI();   // applyStatic 会把 #proBtn 文案刷回「🔒」，这里按状态再修正
       updateRange();
       if (window.__ready) run();
     });
@@ -1476,9 +1668,11 @@
   // 初始化两个下拉式日期选择器；用户改动任一段即触发重算(与原生 change 行为一致)
   startSel = DateSel("startSel", "startDate", () => { if (window.__ready) run(); });
   endSel = DateSel("endSel", "endDate", () => { if (window.__ready) run(); });
+  // 先恢复高级模式状态，再建输入区：否则未解锁时 QS 选项仍可能被选中
+  _proOn = lsGet(PRO_LS_ON) === "1";
+  applyProUI();
   buildInputs();
   updateRange();
   bind();
   window.__ready = true;
-  run();
-})();
+  run();})();
