@@ -96,7 +96,9 @@ def run_backtest(smh_capital: float, smh3_capital: float,
                  start_date: str = None,
                  end_date: str = None,
                  reset_threshold: float = 25.0,
-                 name_a: str = "SMH", name_b: str = "SOXL") -> dict:
+                 name_a: str = "SMH", name_b: str = "SOXL",
+                 hold_days: int = 0,
+                 hold_ratio: float = 1.0) -> dict:
     """
     执行回测。
 
@@ -114,6 +116,12 @@ def run_backtest(smh_capital: float, smh3_capital: float,
       name_a / name_b: 两个标的的显示名（仅影响交易明细文案），默认 SMH / SOXL。
                   不同数据源组合（如 SMH/USD、QQQ/TQQQ）须由调用方传入，
                   否则交易明细会错写成 SMH/SOXL。
+      hold_days:  时间兜底（可选，0=关闭）。连续持有杠杆端满 hold_days 个交易日
+                  仍未触发任何反弹减仓档时，强制按 hold_ratio 比例换回基准端。
+                  用途：堵住“+200% 换回线高于历史新高 → 长熊里永不触发 →
+                  无限期满杠杆”的漏洞。历史回测中它是纯成本（末值明显下降），
+                  因此默认关闭，仅作为风险上限工具。
+      hold_ratio: 时间兜底触发时卖出杠杆端的比例（0~1，默认 1.0 = 全撤）。
 
     返回：
       {
@@ -193,6 +201,17 @@ def run_backtest(smh_capital: float, smh3_capital: float,
                 f"建仓日初始底部（建仓前{INIT_TROUGH_DAYS}交易日区间最低价）")]
     seg_active = False            # 本段回撤是否已达 25%（即本段是否已认定有效底部）
     seg_low = None                # 本段（自上个新高以来）跟踪到的区间最低价
+    # 时间兜底计数：连续持有杠杆端的交易日数（杠杆端市值>0 累加；减仓/清零即复位）
+    try:
+        hold_days = int(hold_days or 0)
+    except (TypeError, ValueError):
+        hold_days = 0
+    try:
+        hold_ratio = float(hold_ratio)
+    except (TypeError, ValueError):
+        hold_ratio = 1.0
+    hold_ratio = max(0.0, min(1.0, hold_ratio))
+    lever_days = 0
 
     # ===== 逐日净值序列（供 GUI 绘制净值曲线对比图）=====
     # equity_dates：日期；equity_strategy：策略每日总市值；
@@ -222,6 +241,12 @@ def run_backtest(smh_capital: float, smh3_capital: float,
         equity_hold_smh3.append(hold_smh3_shares * smh3_price)
         equity_5050.append(
             fixed_smh_shares * smh_price + fixed_smh3_shares * smh3_price)
+
+        # ===== 时间兜底计数：当日仍持有杠杆端则累加持有天数 =====
+        if smh3_shares * smh3_price > 1e-9:
+            lever_days += 1
+        else:
+            lever_days = 0
 
         # ===== 创出新高 -> 回撤基准 peak 上移，开启新一轮补仓判断 =====
         # 创新高说明价格重回高位，回撤补仓基准 peak 上移、回撤档 dd_fired 清空、
@@ -326,7 +351,30 @@ def run_backtest(smh_capital: float, smh3_capital: float,
                         "equity": smh_shares * smh_price
                         + smh3_shares * smh3_price,
                         "price_a": smh_price, "price_b": smh3_price})
+                    lever_days = 0
                 rb_fired.add(lv)
+
+        # ===== 时间兜底强制减仓（可选，hold_days=0 时关闭）=====
+        # 连续持有杠杆端满 hold_days 个交易日仍未触发任何反弹档，则强制换回
+        # 基准端 hold_ratio 比例，避免「换回线高于历史新高」时长期满杠杆扛跌。
+        if (hold_days > 0 and hold_ratio > 0
+                and lever_days >= hold_days
+                and smh3_shares * smh3_price > 1e-9):
+            move = smh3_shares * smh3_price * hold_ratio
+            smh3_shares -= move / smh3_price
+            smh_shares += move / smh_price
+            trades.append((
+                date, "减仓",
+                f"时间兜底：持有{name_b}满{hold_days}个交易日未触发反弹档，"
+                f"卖出{name_b}市值{move:.2f}买入{name_a}",
+                smh_price, smh3_price,
+                smh_shares * smh_price, smh3_shares * smh3_price))
+            trade_marks.append({
+                "date": date, "kind": "减仓",
+                "equity": smh_shares * smh_price
+                + smh3_shares * smh3_price,
+                "price_a": smh_price, "price_b": smh3_price})
+            lever_days = 0
 
     final_smh = smh_shares * smh_series[end_date]
     final_smh3 = smh3_shares * smh3_series[end_date]

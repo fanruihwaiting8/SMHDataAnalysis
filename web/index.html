@@ -335,6 +335,10 @@
         <input type="checkbox" id="dca" /> <span data-i18n="dca.label">每月定投（起始资金的 1%）</span>
       </label>
       <span class="dcaSum" id="dcaSum" style="display:none"></span>
+      <label class="chk" id="holdWrap" data-i18n-title="hold.title" title="风险上限工具（默认关闭）：连续持有杠杆端满 N 个交易日仍未触发任何反弹减仓档时，强制把杠杆端全部换回基准端。用途是堵住「+200% 换回线高于历史新高 → 长熊里永不触发 → 无限期满杠杆」的漏洞。注意：历史回测中它是纯成本，末值会明显下降">
+        <input type="checkbox" id="holdOn" /> <span data-i18n="hold.label">时间兜底（持杠杆满 N 日强制换回）</span>
+      </label>
+      <input id="holdDays" type="number" min="20" max="3000" step="1" value="756" data-i18n-title="hold.days.title" title="强制换回所需的连续持有杠杆端交易日数（756 ≈ 3 年）" style="width:84px" />
       <span class="note" id="rangeNote"></span>
     </div>
     <div class="dcaRec" id="dcaRec" style="display:none"></div>

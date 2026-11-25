@@ -119,6 +119,9 @@ Object.assign(window.I18N.zh, {
   "btn.recommend": "填入推荐参数",
   "dca.label": "每月定投（起始资金的 1%）",
   "dca.title": "每月第一个交易日注入「基准端+杠杆端起始资金之和」的 1%，全额买入基准端，之后是否换成杠杆端仍由上面的回撤档位决定",
+  "hold.label": "时间兜底（持杠杆满 N 日强制换回）",
+  "hold.title": "风险上限工具（默认关闭）：连续持有杠杆端满 N 个交易日仍未触发任何反弹减仓档时，强制把杠杆端全部换回基准端。用途是堵住「+200% 换回线高于历史新高 → 长熊里永不触发 → 无限期满杠杆」的漏洞。注意：历史回测中它是纯成本，末值会明显下降",
+  "hold.days.title": "强制换回所需的连续持有杠杆端交易日数（756 ≈ 3 年）",
 });
 Object.assign(window.I18N.en, {
   "param.h2": "Strategy parameters",
@@ -140,6 +143,9 @@ Object.assign(window.I18N.en, {
   "btn.recommend": "Fill recommended",
   "dca.label": "Monthly contribution (1% of starting capital)",
   "dca.title": "On the first trading day of each month, 1% of the combined starting capital is added and fully invested in the base leg; whether it later rotates into the leveraged leg is still decided by the drawdown levels above",
+  "hold.label": "Time-based exit (force back after N days in the leveraged leg)",
+  "hold.title": "Risk-cap tool (off by default): if the leveraged leg has been held for N consecutive trading days without triggering any rebound-trim level, the whole leveraged leg is rotated back into the base leg. It closes the hole where a +200% trim line sits above the all-time high, never triggers in a long bear market and leaves you fully leveraged indefinitely. Note: in historical backtests it is a pure cost and clearly lowers the final value",
+  "hold.days.title": "Consecutive trading days holding the leveraged leg before the forced rotation (756 ≈ 3 years)",
 });
 
 // ---------- 指标 / 曲线 / 组合对比 / 交易明细 ----------
@@ -313,6 +319,7 @@ Object.assign(window.I18N.zh, {
   "trade.kind.cut": "减仓",
   "trade.desc.add": "{a}回撤-{lv}%，卖出{a}市值{move}买入{b}",
   "trade.desc.cut": "{a}反弹+{lv}%，卖出{b}市值{move}买入{a}",
+  "trade.desc.timeExit": "时间兜底：持有{b}满{days}个交易日未触发反弹档，卖出{b}市值{move}买入{a}",
   "date.year": "{y}年",
   "date.month": "{m}月",
   "date.day": "{d}日",
@@ -337,6 +344,7 @@ Object.assign(window.I18N.en, {
   "trade.kind.cut": "Trim",
   "trade.desc.add": "{a} drawdown -{lv}%: sell ${move} of {a} and buy {b}",
   "trade.desc.cut": "{a} rebound +{lv}%: sell ${move} of {b} and buy {a}",
+  "trade.desc.timeExit": "Time stop: held {b} for {days} trading days with no rebound trigger, sell ${move} of {b} and buy {a}",
   "date.year": "{y}",
   "date.month": "{m}",
   "date.day": "{d}",

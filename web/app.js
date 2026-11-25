@@ -29,10 +29,12 @@
       dd: { 15: 90, 25: 0, 35: 100, 45: 0, 50: 0 },
       rb: { 50: 0, 100: 100, 200: 0 },
     },
-    // SMH/USD（全量 2007-02-01~2026-11-02，共 4962 日，含 2008 年熊市）：
-    // 回撤 -25% 换 80%、-35% 换 95%、-45% 剩余全换 USD，反弹 +200% 全撤回 SMH。
+    // SMH/USD（近 10 年窗口 2016-11~2026-11 带护栏搜索，含「深档留弹药」约束）：
+    // 回撤 -35% 换 75%、-45% 再换 75%、-50% 剩余全换 USD，反弹 +200% 全撤回 SMH。
+    // 与旧的收益最大化档位（-25%换80%/-35%换95%/-45%全换）相比 10 年收益基本持平
+    // （121.9x vs 121.5x），最大回撤由 -64.9% 降至 -54.9%，且深档仍留有额度。
     USD: {
-      dd: { 15: 0, 25: 80, 35: 95, 45: 100, 50: 0 },
+      dd: { 15: 0, 25: 0, 35: 75, 45: 75, 50: 100 },
       rb: { 50: 0, 100: 0, 200: 100 },
     },
   };
@@ -71,6 +73,16 @@
   const dcaOn = () => !!($("dca") && $("dca").checked);
   // 当前生效的每月注入金额（未勾选定投时为 0）
   function monthlyPctNow() { return dcaOn() ? DCA_PCT : 0; }
+
+  // 时间兜底（默认关闭）：连续持有杠杆端满 N 个交易日仍未触发任何反弹减仓档时，
+  // 强制把杠杆端全部换回基准端。它只是风险上限工具——历史回测中是纯成本
+  // （末值明显下降），所以不写进推荐参数，只在用户主动勾选时生效。
+  const HOLD_RATIO = 1;     // 触发时的换回比例（1 = 全撤）
+  function holdDaysNow() {
+    if (!$("holdOn") || !$("holdOn").checked) return 0;
+    const n = Math.floor(+($("holdDays") && $("holdDays").value) || 0);
+    return n > 0 ? n : 0;
+  }
 
   // ---- 下拉式日期选择器：年/月/日三段下拉 <-> 隐藏 input(YYYY-MM-DD) 双向同步 ----
   // 用可选交易日集合(setDates)约束：只列出区间内真实存在数据的年/月/日，
@@ -626,6 +638,7 @@
           keyA: src.a, keyB: src.b, capA, capB,
           drawdowns: dd, rebounds: rb, startDate: s.start, endDate: s.end,
           monthlyPct: monthlyPct || 0,
+          holdDays: holdDaysNow(), holdRatio: HOLD_RATIO,
         });
       } catch (e) { continue; }
       const m = (monthlyPct > 0)
@@ -1067,6 +1080,7 @@
       res = BT.runBacktest({
         keyA: src.a, keyB: src.b, capA, capB,
         drawdowns: dd, rebounds: rb, startDate, endDate, monthlyPct,
+        holdDays: holdDaysNow(), holdRatio: HOLD_RATIO,
       });
     } catch (e) {
       alert(T("run.failed", { e: e.message }));
@@ -1365,6 +1379,8 @@
         res = BT.runBacktest({
           keyA: g.a, keyB: g.b, capA, capB, drawdowns: dd, rebounds: rb,
           startDate, endDate: uEnd, monthlyPct,
+          // 横向对比与主回测用同一口径：开了时间兜底，各组都带兜底跑
+          holdDays: holdDaysNow(), holdRatio: HOLD_RATIO,
         });
       } catch (e) {
         return `<tr><td>${g.label}</td><td colspan="8" class="neg">${e.message}</td></tr>`;
@@ -1409,6 +1425,17 @@
     // 勾选/取消定投：切换到对应口径的推荐参数并立即重跑，省掉手动点一次推荐
     if ($("dca")) {
       $("dca").addEventListener("change", () => { fillRecommend(); run(); });
+    }
+    // 勾选/取消时间兜底、或改天数：直接重跑（推荐参数不随它变，推荐参数是在「不开兜底」口径下搜出来的）
+    if ($("holdOn")) {
+      $("holdOn").addEventListener("change", () => {
+        const w = $("holdWrap");
+        if (w) w.classList.toggle("on", $("holdOn").checked);
+        run();
+      });
+    }
+    if ($("holdDays")) {
+      $("holdDays").addEventListener("change", () => { if ($("holdOn") && $("holdOn").checked) run(); });
     }
     document.querySelectorAll("#curveToggle span").forEach((s) => {
       s.addEventListener("click", () => {

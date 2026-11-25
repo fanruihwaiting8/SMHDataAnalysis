@@ -64,6 +64,12 @@ function runBacktest(opts) {
     //   · 50-50 不动：严格按 50%:50% 分摊注入（与你设的初始配比无关，见下）。
     // 四条曲线的外部现金流完全一致，才能公平对比。
     monthlyPct = 0,
+    // 时间兜底（可选，0=关闭）：连续持有杠杆端满 holdDays 个交易日仍未触发任何
+    // 反弹减仓档时，强制按 holdRatio（0~1）比例换回基准端。用于堵住「+200% 换回
+    // 线高于历史新高 → 长熊里永不触发 → 无限期满杠杆」的漏洞。历史回测中它是纯
+    // 成本（末值明显下降），故默认关闭，仅作为风险上限工具。
+    holdDays = 0,
+    holdRatio = 1,
   } = opts;
 
 const smhSeries = seriesMap(keyA);
@@ -108,6 +114,10 @@ const smhSeries = seriesMap(keyA);
   const troughs = [[start, activeTrough, "trough.init"]];
   let segActive = false;
   let segLow = null;
+  // 时间兜底计数：连续持有杠杆端的交易日数（减仓清空杠杆端即复位）
+  const holdN = Math.max(0, Math.floor(Number(holdDays) || 0));
+  const holdR = Math.min(1, Math.max(0, Number(holdRatio) || 0));
+  let leverDays = 0;
 
   const total = capA + capB;
   let holdAShares = total / p0a;
@@ -171,6 +181,10 @@ const smhSeries = seriesMap(keyA);
     equityHoldA.push(holdAShares * pa);
     equityHoldB.push(holdBShares * pb);
     equity5050.push(fixedAShares * pa + fixedBShares * pb);
+
+    // 时间兜底计数：当日仍持有杠杆端则累加持有天数
+    if (smh3Shares * pb > 1e-9) leverDays += 1;
+    else leverDays = 0;
 
     for (const b of benches) {
       const pc = b.prices[i];
@@ -243,9 +257,22 @@ const smhSeries = seriesMap(keyA);
           trades.push([date, "cut", { k: "trade.desc.cut", v: { a: keyA, b: keyB, lv: lv, move: move.toFixed(2) } },
                        pa, pb, smhShares * pa, smh3Shares * pb]);
           tradeMarks.push({ date, kind: "cut", equity: smhShares * pa + smh3Shares * pb, priceA: pa, priceB: pb });
+          leverDays = 0;
         }
         rbFired.add(lv);
       }
+    }
+
+    // 时间兜底强制减仓（holdN=0 时关闭）
+    if (holdN > 0 && holdR > 0 && leverDays >= holdN && smh3Shares * pb > 1e-9) {
+      const move = smh3Shares * pb * holdR;
+      smh3Shares -= move / pb;
+      smhShares += move / pa;
+      trades.push([date, "cut",
+                   { k: "trade.desc.timeExit", v: { a: keyA, b: keyB, days: holdN, move: move.toFixed(2) } },
+                   pa, pb, smhShares * pa, smh3Shares * pb]);
+      tradeMarks.push({ date, kind: "cut", equity: smhShares * pa + smh3Shares * pb, priceA: pa, priceB: pb });
+      leverDays = 0;
     }
   }
 
