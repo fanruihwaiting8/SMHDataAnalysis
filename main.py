@@ -176,23 +176,6 @@ DATA_SOURCES = {
         "recommend_rb": {50: 0, 100: 0, 200: 100},
         "reset_threshold": 25.0,
     },
-    # 实验性组合：用 QQQ（纳指）作信号端 + SOXL（半导体 3 倍）作杠杆端。
-    # 跨指数配对——信号与杠杆标的不是同一条曲线，历史表现明显弱于 SMH/SOXL
-    # （全窗 130x vs 1893x，回撤 -79.3%），仅作对照研究，故在 web 版里归入
-    # 「高级模式」后才出现。
-    "QS": {
-        "label": "QQQ / SOXL（纳指信号·半导体3倍）🔬",
-        "csv_a": "QQQ_full_history.csv",
-        "csv_b": "SOXL_full_history.csv",
-        "name_a": "QQQ",
-        "name_b": "SOXL",
-        # 全量历史窗口（2010-03~2026-11，两者交集），护栏：最大回撤 ≤85%。
-        # 由 tools/optimize_robust_bands.py qs all 得出的鲁棒区间中心值。
-        # 全窗 130.2x / -79.3%；多起点中位 35.0x、最差 1.47x。
-        "recommend_dd": {15: 25, 25: 25, 35: 50, 45: 50, 50: 50},
-        "recommend_rb": {50: 0, 100: 100, 200: 0},
-        "reset_threshold": 25.0,
-    },
 }
 DEFAULT_SOURCE = "SMH"
 

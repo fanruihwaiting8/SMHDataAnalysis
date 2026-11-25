@@ -354,7 +354,6 @@
           <option value="SMH" data-i18n="param.src.SMH">SMH / SOXL（半导体·3x）</option>
           <option value="QQQ" data-i18n="param.src.QQQ">QQQ / TQQQ（纳指100·3x）</option>
           <option value="USD" data-i18n="param.src.USD">SMH / USD（半导体·2x）</option>
-          <option value="QS" data-pro="1" data-i18n="param.src.QS">QQQ / SOXL（纳指信号 + 半导体3x）🔬</option>
         </select>
       </div>
       <div class="field">
@@ -412,6 +411,42 @@
       <input id="holdDays" type="number" min="20" max="3000" step="1" value="756" data-i18n-title="hold.days.title" title="强制换回所需的连续持有杠杆端交易日数（756 ≈ 3 年）" style="width:84px" />
       <span class="note" id="rangeNote"></span>
     </div>
+    <!-- 趋势过滤（高级模式专属，默认关闭；仅网页版实现） -->
+    <div class="grp pro-only blk" id="trendBox">
+      <div class="lbl" data-i18n="trend.lbl">📈 趋势过滤（200 日均线动态杠杆 + 包络带阶梯离场）</div>
+      <div class="row">
+        <label class="chk" id="trendWrap" data-i18n-title="trend.title" title="《Leverage for the Long Run》式的趋势择时：基准端价格在长均线上方才持杠杆，跌破包络带并确认后清空杠杆换回基准端">
+          <input type="checkbox" id="trendOn" /> <span data-i18n="trend.label">启用趋势过滤</span>
+        </label>
+        <div class="field">
+          <label data-i18n="trend.long">长均线（日）</label>
+          <input id="trendLong" type="number" min="20" max="400" step="1" value="200" />
+        </div>
+        <div class="field">
+          <label data-i18n="trend.buf">包络带缓冲 (%)</label>
+          <input id="trendBuf" type="number" min="0" max="30" step="0.5" value="3" />
+        </div>
+        <div class="field">
+          <label data-i18n="trend.confirm">确认天数</label>
+          <input id="trendConfirm" type="number" min="1" max="30" step="1" value="2" />
+        </div>
+        <div class="field">
+          <label data-i18n="trend.short">短均线（日）</label>
+          <input id="trendShort" type="number" min="5" max="200" step="1" value="50" />
+        </div>
+        <div class="field">
+          <label data-i18n="trend.cut">跌破短均线减仓 (%)</label>
+          <input id="trendShortCut" type="number" min="0" max="100" step="5" value="30" />
+        </div>
+        <label class="chk" data-i18n-title="trend.block.title" title="清空杠杆期间忽略回撤补仓档，避免「今天补进去、明天又被清掉」的来回摩擦">
+          <input type="checkbox" id="trendBlockAdd" checked /> <span data-i18n="trend.block">空头期不补仓</span>
+        </label>
+        <label class="chk" data-i18n-title="trend.reenter.title" title="价格重新站上均线时，把杠杆占比恢复到减仓前的水平；关闭则等回撤档位自然触发">
+          <input type="checkbox" id="trendReenter" checked /> <span data-i18n="trend.reenter">转多恢复仓位</span>
+        </label>
+      </div>
+      <div class="note" data-i18n="trend.note">历史回测中它显著压低最大回撤，但也会明显降低末值——超额收益恰恰来自「深跌时加杠杆」，与趋势过滤的哲学相反。建议配合图中「200日均线轮动」对照线一起看。</div>
+    </div>
     <div class="dcaRec" id="dcaRec" style="display:none"></div>
   </div>
 
@@ -431,6 +466,7 @@
       <span data-k="holdB" class="on" data-i18n="curve.holdB">纯持杠杆</span>
       <span data-k="cost" class="on" data-i18n="curve.cost">累计投入成本</span>
       <span data-k="csi300" data-i18n="curve.csi300" title="同等现金流全部投入沪深300指数（CNY 点位，不做汇率换算）；沪深300 数据自 2005-01-04 起，更早区间不画">同期沪深300</span>
+      <span data-k="trendRotate" class="on pro-only" data-i18n="curve.trendRotate" title="纯 200 日均线轮动对照：价在长均线上方满仓杠杆端、下方满仓基准端（不含回撤补仓/反弹减仓），仅在启用趋势过滤时有数据">200日均线轮动</span>
       <span data-k="log" class="on" data-i18n="curve.log">对数坐标</span>
     </div>
     <div id="chart"></div>
@@ -443,7 +479,6 @@
       <span data-k="SMH" class="on">SMH / SOXL</span>
       <span data-k="QQQ">QQQ / TQQQ</span>
       <span data-k="USD" class="on">SMH / USD</span>
-      <span data-k="QS" class="pro-only">QQQ / SOXL 🔬</span>
     </div>
     <div class="note" style="margin-bottom:10px" data-i18n="cmp.note">
       勾选想对比的组合。对比区间跟随上方「起始/截止日期」的设定：各组均在你设定的范围内计算，便于同期对比。若某组的标的数据晚于你设定的起点（如 SMH 仅有近 10 年数据），则该组从其数据首日起算。未设起点时，才会兜底为勾选组合涉及标的中最晚的上市日。
@@ -528,7 +563,7 @@ document.write('<script src="data.js?v=9&t=' + SMH_CACHE_T + '"><\/script>');
 // 前端脚本同样附加 token：Safari 等浏览器对 index.html 自身的缓存很顽固，
 // 只靠手动 bump ?v= 时，拿到旧 index.html 的用户仍会继续加载旧 JS。
 (function () {
-  var files = ['i18n.js?v=20', 'backtest.js?v=19', 'app.js?v=35'];
+  var files = ['i18n.js?v=21', 'backtest.js?v=20', 'app.js?v=36'];
   for (var i = 0; i < files.length; i++) {
     document.write('<script src="' + files[i] + '&t=' + SMH_CACHE_T + '"><\/script>');
   }

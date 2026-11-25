@@ -8,9 +8,6 @@
     SMH: { a: "SMH", b: "SOXL", na: "SMH", nb: "SOXL" },
     QQQ: { a: "QQQ", b: "TQQQ", na: "QQQ", nb: "TQQQ" },
     USD: { a: "SMH", b: "USD", na: "SMH", nb: "USD" },
-    // 高级模式专属：用纳指(QQQ)做回撤/反弹信号，杠杆端换成半导体 3x(SOXL)。
-    // 跨指数组合，历史表现明显弱于 SMH/SOXL，仅作研究对比，默认隐藏。
-    QS: { a: "QQQ", b: "SOXL", na: "QQQ", nb: "SOXL", pro: true },
   };
   // 推荐参数（tools/optimize_robust_bands.py 三段式搜索结果：
   //   Phase 1 带护栏的全网格（最大回撤上限 + 深档留弹药额度）
@@ -42,12 +39,6 @@
       dd: { 15: 0, 25: 25, 35: 75, 45: 100, 50: 50 },
       rb: { 50: 0, 100: 0, 200: 100 },
     },
-    // QQQ/SOXL（高级模式，全量 2010-02-11 起，护栏 cap 85%）：
-    // 全窗 130.2x / -79.3%，多起点中位 35.0x、最差 1.47x
-    QS: {
-      dd: { 15: 25, 25: 25, 35: 50, 45: 50, 50: 50 },
-      rb: { 50: 0, 100: 100, 200: 0 },
-    },
   };
   // 推荐区间：[下限, 上限, 中心]（单位 %）。
   // 区间含义 = 护栏约束下，末值仍在最优值 85% 以上、且多起点最差情形不低于
@@ -65,10 +56,6 @@
     USD: {
       dd: { 15: [0, 0], 25: [0, 25], 35: [50, 75], 45: [75, 100], 50: [25, 75] },
       rb: { 50: [0, 0], 100: [0, 0], 200: [100, 100] },
-    },
-    QS: {
-      dd: { 15: [25, 25], 25: [0, 50], 35: [50, 75], 45: [25, 75], 50: [25, 75] },
-      rb: { 50: [0, 0], 100: [100, 100], 200: [0, 0] },
     },
   };
 
@@ -115,6 +102,33 @@
     if (!$("holdOn") || !$("holdOn").checked) return 0;
     const n = Math.floor(+($("holdDays") && $("holdDays").value) || 0);
     return n > 0 ? n : 0;
+  }
+
+  // 趋势过滤（高级模式专属，默认关闭）：《Leverage for the Long Run》的
+  // 200 日均线动态杠杆轮动 + 均线包络带阶梯离场。
+  // 只在网页版实现，关闭时与 Python 引擎结果完全一致。
+  const TREND_DEF = { long: 200, short: 50, buf: 3, confirm: 2, cut: 30 };
+  function numOf(id, dflt, min, max) {
+    const el = $(id);
+    let v = el ? +el.value : NaN;
+    if (!isFinite(v)) v = dflt;
+    if (min != null) v = Math.max(min, v);
+    if (max != null) v = Math.min(max, v);
+    return v;
+  }
+  function trendOn() { return !!(proOn() && $("trendOn") && $("trendOn").checked); }
+  function trendOpts() {
+    if (!trendOn()) return { trendOn: false };
+    return {
+      trendOn: true,
+      trendLong: Math.round(numOf("trendLong", TREND_DEF.long, 20, 400)),
+      trendShort: Math.round(numOf("trendShort", TREND_DEF.short, 5, 200)),
+      trendBuf: numOf("trendBuf", TREND_DEF.buf, 0, 30),
+      trendConfirm: Math.round(numOf("trendConfirm", TREND_DEF.confirm, 1, 30)),
+      trendShortCut: numOf("trendShortCut", TREND_DEF.cut, 0, 100),
+      trendBlockAdd: !($("trendBlockAdd") && !$("trendBlockAdd").checked),
+      trendReenter: !($("trendReenter") && !$("trendReenter").checked),
+    };
   }
 
   // ---- 下拉式日期选择器：年/月/日三段下拉 <-> 隐藏 input(YYYY-MM-DD) 双向同步 ----
@@ -698,6 +712,7 @@
           drawdowns: dd, rebounds: rb, startDate: s.start, endDate: s.end,
           monthlyPct: monthlyPct || 0,
           holdDays: holdDaysNow(), holdRatio: HOLD_RATIO,
+          ...trendOpts(),
         });
       } catch (e) { continue; }
       const m = (monthlyPct > 0)
@@ -1140,6 +1155,7 @@
         keyA: src.a, keyB: src.b, capA, capB,
         drawdowns: dd, rebounds: rb, startDate, endDate, monthlyPct,
         holdDays: holdDaysNow(), holdRatio: HOLD_RATIO,
+        ...trendOpts(),
       });
     } catch (e) {
       alert(T("run.failed", { e: e.message }));
@@ -1269,6 +1285,8 @@
     // 成 0），ECharts 会自动断开该段。
     [
       ["csi300", "curve.csi300", "equityCSI300", "#3fb950"],
+      // 纯 200 日均线轮动对照（仅高级模式开启趋势过滤时有值，否则为 null 自动跳过）
+      ["trendRotate", "curve.trendRotate", "equityTrendRotate", "#db6d28"],
     ].forEach(([k, i18nKey, field, color]) => {
       const arr = res[field];
       if (!on[k] || !arr || arr.length !== res.equityDates.length) return;
@@ -1383,7 +1401,6 @@
     { key: "SMH", a: "SMH", b: "SOXL", label: "SMH / SOXL" },
     { key: "QQQ", a: "QQQ", b: "TQQQ", label: "QQQ / TQQQ" },
     { key: "USD", a: "SMH", b: "USD", label: "SMH / USD" },
-    { key: "QS", a: "QQQ", b: "SOXL", label: "QQQ / SOXL", pro: true },
   ];
 
   function checkedCmpGroups() {
@@ -1439,8 +1456,9 @@
         res = BT.runBacktest({
           keyA: g.a, keyB: g.b, capA, capB, drawdowns: dd, rebounds: rb,
           startDate, endDate: uEnd, monthlyPct,
-          // 横向对比与主回测用同一口径：开了时间兜底，各组都带兜底跑
+          // 横向对比与主回测用同一口径：开了时间兜底/趋势过滤，各组都带着跑
           holdDays: holdDaysNow(), holdRatio: HOLD_RATIO,
+          ...trendOpts(),
         });
       } catch (e) {
         return `<tr><td>${g.label}</td><td colspan="8" class="neg">${e.message}</td></tr>`;
@@ -1627,6 +1645,18 @@
     if ($("holdDays")) {
       $("holdDays").addEventListener("change", () => { if ($("holdOn") && $("holdOn").checked) run(); });
     }
+    // 趋势过滤（高级模式）：开关切换展开参数行并重跑；参数改动仅在开启时重跑
+    if ($("trendOn")) {
+      $("trendOn").addEventListener("change", () => {
+        const w = $("trendWrap");
+        if (w) w.classList.toggle("on", $("trendOn").checked);
+        run();
+      });
+    }
+    ["trendLong", "trendShort", "trendBuf", "trendConfirm", "trendShortCut",
+     "trendBlockAdd", "trendReenter"].forEach((id) => {
+      if ($(id)) $(id).addEventListener("change", () => { if (trendOn()) run(); });
+    });
     document.querySelectorAll("#curveToggle span").forEach((s) => {
       s.addEventListener("click", () => {
         s.classList.toggle("on");
@@ -1668,7 +1698,7 @@
   // 初始化两个下拉式日期选择器；用户改动任一段即触发重算(与原生 change 行为一致)
   startSel = DateSel("startSel", "startDate", () => { if (window.__ready) run(); });
   endSel = DateSel("endSel", "endDate", () => { if (window.__ready) run(); });
-  // 先恢复高级模式状态，再建输入区：否则未解锁时 QS 选项仍可能被选中
+  // 先恢复高级模式状态，再建输入区（高级模式控制趋势面板的显隐）
   _proOn = lsGet(PRO_LS_ON) === "1";
   applyProUI();
   buildInputs();

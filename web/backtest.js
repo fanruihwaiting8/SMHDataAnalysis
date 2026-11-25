@@ -51,6 +51,23 @@ function alignForwardFill(targetDates, key) {
   return out;
 }
 
+// 简单移动均线：沿给定交易日序列滚动计算，不足周期返回 null。
+// 必须喂「全历史交易日」而不是回测区间，否则回测起点后的头 N 天拿不到均线，
+// 趋势过滤会在最该起作用的开头失效。
+function smaSeries(dates, series, period) {
+  const out = {};
+  let sum = 0;
+  const q = [];
+  for (const d of dates) {
+    const v = series[d];
+    q.push(v);
+    sum += v;
+    if (q.length > period) sum -= q.shift();
+    out[d] = q.length === period ? sum / period : null;
+  }
+  return out;
+}
+
 // 主回测：keyA=基准(1x), keyB=杠杆(3x/2x)
 function runBacktest(opts) {
   const {
@@ -70,6 +87,23 @@ function runBacktest(opts) {
     // 成本（末值明显下降），故默认关闭，仅作为风险上限工具。
     holdDays = 0,
     holdRatio = 1,
+    // ===== 200 日均线趋势过滤（高级模式，默认关闭）=====
+    // 思路出自《Leverage for the Long Run》：杠杆 ETF 的毁灭性亏损几乎全部发生在
+    // 长期均线之下的熊市区间；牛市（价在 200 日均线上方）满杠杆吃复利、熊市去杠杆，
+    // 长期结果远好于一直满杠杆。这里叠加「均线包络带 + 阶梯分批离场」以降低震荡
+    // 行情里的假突破摩擦：
+    //   · trendShort 短均线破位 → 先减 trendShortCut% 杠杆（预警，不清仓）；
+    //   · 收盘价跌破 trendLong×(1−trendBuf%) 且连续 trendConfirm 个交易日 → 清空杠杆；
+    //   · 收盘价重新站上 trendLong → 解除风控（trendReenter=true 时重置回撤档位，
+    //     允许按当前回撤重新建立杠杆仓位）。
+    trendOn = false,
+    trendLong = 200,
+    trendShort = 50,
+    trendBuf = 3,
+    trendConfirm = 2,
+    trendShortCut = 30,
+    trendBlockAdd = true,
+    trendReenter = true,
   } = opts;
 
 const smhSeries = seriesMap(keyA);
@@ -119,6 +153,32 @@ const smhSeries = seriesMap(keyA);
   const holdR = Math.min(1, Math.max(0, Number(holdRatio) || 0));
   let leverDays = 0;
 
+  // ===== 趋势过滤状态 =====
+  const trOn = !!trendOn;
+  const trLong = Math.max(2, Math.floor(Number(trendLong) || 200));
+  const trShort = Math.max(2, Math.floor(Number(trendShort) || 50));
+  const trBuf = Math.max(0, Number(trendBuf) || 0) / 100;
+  const trConfirm = Math.max(1, Math.floor(Number(trendConfirm) || 1));
+  const trCut1 = Math.min(1, Math.max(0, (Number(trendShortCut) || 0) / 100));
+  const trBlock = trendBlockAdd !== false;
+  const trReenter = trendReenter !== false;
+  // 均线一律建在基准端（1 倍标的）上：杠杆端自身波动被放大，均线噪声大得多
+  const maL = trOn ? smaSeries(allCommon, smhSeries, trLong) : null;
+  const maS = trOn ? smaSeries(allCommon, smhSeries, trShort) : null;
+  // trStage：0=趋势内满配 1=已短均线减仓 2=已清空杠杆（风控中）
+  let trStage = 0;
+  let trBelow = 0;
+  // 短均线减仓前的杠杆端占比：站回短均线时按它把仓位买回原比例
+  let trWeightBefore = null;
+  if (trOn) {
+    const m0 = maL[start], s0 = maS[start];
+    if (m0 != null && m0 > 0 && p0a < m0 * (1 - trBuf)) { trStage = 2; trBelow = trConfirm; }
+    else if (s0 != null && s0 > 0 && p0a < s0) { trStage = 1; }
+  }
+  // 纯「200 日均线轮动」对照组：同样的现金流，趋势内 100% 杠杆端、
+  // 短均线破位降到 (1−trendShortCut)、跌破包络带 100% 基准端。
+  const trTargetB = () => (trStage === 0 ? 1 : trStage === 1 ? 1 - trCut1 : 0);
+
   const total = capA + capB;
   let holdAShares = total / p0a;
   let holdBShares = total / p0b;
@@ -126,6 +186,14 @@ const smhSeries = seriesMap(keyA);
   // 与用户设置的初始配比 capA:capB 无关（否则这条线叫「50-50」就名不副实）。
   let fixedAShares = (total * 0.5) / p0a;
   let fixedBShares = (total * 0.5) / p0b;
+
+  // 轮动对照组初始建仓：按建仓日的趋势状态直接摆到目标权重
+  let rotAShares = 0, rotBShares = 0;
+  if (trOn) {
+    const tb = trTargetB();
+    rotBShares = (total * tb) / p0b;
+    rotAShares = (total * (1 - tb)) / p0a;
+  }
 
   // 定投相关：每期注入额（50-50 对照按 50%:50% 分摊，见上）
   const monthlyCash = total * (monthlyPct || 0) / 100.0;
@@ -137,6 +205,8 @@ const smhSeries = seriesMap(keyA);
   const equityHoldA = [holdAShares * p0a];
   const equityHoldB = [holdBShares * p0b];
   const equity5050 = [fixedAShares * p0a + fixedBShares * p0b];
+  // 纯 200 日均线轮动对照曲线（仅趋势开关打开时有值）
+  const equityTrendRotate = trOn ? [rotAShares * p0a + rotBShares * p0b] : null;
   // 对比基准（同期沪深300）：与其他曲线完全一致的现金流（首日本金 + 每月定投）
   // 全部投入该基准（CNY 计价，不做汇率换算）。A 股与美股交易日不重合，价格按
   // 前向填充对齐；回测起点早于该基准数据起点时该段为 null（图上断开），期间注入
@@ -172,6 +242,12 @@ const smhSeries = seriesMap(keyA);
       holdBShares += inflow / pb;
       fixedAShares += (inflow * 0.5) / pa;
       fixedBShares += (inflow * 0.5) / pb;
+      if (trOn) {
+        // 轮动组：注入现金按当前目标权重买入
+        const tb = trTargetB();
+        rotBShares += (inflow * tb) / pb;
+        rotAShares += (inflow * (1 - tb)) / pa;
+      }
       for (const b of benches) b.cash += inflow;  // 对比基准：待投现金
     }
     flows.push(inflow);
@@ -210,11 +286,98 @@ const smhSeries = seriesMap(keyA);
       ddPct = ((peak - pa) / peak) * 100.0;
     }
 
+    // ===== 趋势过滤（200 日均线轮动 + 均线包络带阶梯离场）=====
+    // 放在回撤补仓之前：风控中（stage=2）时当日的补仓档位直接被拦截，
+    // 避免「先补进去、再被清掉」的来回摩擦。
+    let trendNoAdd = false;
+    if (trOn) {
+      const mL = maL[date], mS = maS[date];
+      const prevStage = trStage;
+      if (mL != null && mL > 0) {
+        // 包络带：只有跌破 trendLong×(1−buf) 才开始计确认天数，震荡擦线不算
+        if (pa < mL * (1 - trBuf)) trBelow += 1;
+        else trBelow = 0;
+
+        if (trStage === 2) {
+          // 风控中：只认长均线，重新站上即解除（不设二次缓冲，否则会错过牛市初段）
+          if (pa > mL) trStage = 0;
+        } else if (trBelow >= trConfirm) {
+          trStage = 2;
+        } else if (trStage === 0) {
+          if (mS != null && mS > 0 && pa < mS) trStage = 1;
+        } else if (mS != null && mS > 0 && pa > mS) {
+          // 已短均线减仓，价格重新站上短均线才回补（否则 50MA 下方会被反复
+          // 「减一天、第二天补回」地来回摩擦，减仓等于白做）
+          trStage = 0;
+        }
+      }
+
+      // 清仓：写成幂等条件（而非只在状态跳变时执行），这样「回测起点就已在
+      // 风控中」也能把初始杠杆仓位换回基准端。
+      if (trStage === 2 && smh3Shares * pb > 1e-9) {
+        const eq0 = smhShares * pa + smh3Shares * pb;
+        // 记下清仓前的杠杆占比（若 stage1 已记过就保留更早的满配比例），
+        // 转多时按这个比例一次性买回。
+        if (trWeightBefore == null) trWeightBefore = eq0 > 0 ? (smh3Shares * pb) / eq0 : null;
+        const move = smh3Shares * pb;
+        smh3Shares = 0;
+        smhShares += move / pa;
+        trades.push([date, "cut",
+                     { k: "trade.desc.trendExit", v: { a: keyA, b: keyB, ma: trLong, buf: (trBuf * 100).toFixed(1), days: trConfirm, move: move.toFixed(2) } },
+                     pa, pb, smhShares * pa, smh3Shares * pb]);
+        tradeMarks.push({ date, kind: "cut", equity: smhShares * pa + smh3Shares * pb, priceA: pa, priceB: pb });
+        leverDays = 0;
+      } else if (trStage === 1 && prevStage === 0 && trCut1 > 0 && smh3Shares * pb > 1e-9) {
+        // 短均线破位：先减一档杠杆，并记下减仓前的杠杆占比，站回短均线时按这个
+        // 比例买回（不能指望回撤档位去补——牛市小回调根本够不到 15% 档，
+        // 那样每跌破一次 50MA 杠杆就少一块，永远回不来）。
+        const eq = smhShares * pa + smh3Shares * pb;
+        trWeightBefore = eq > 0 ? (smh3Shares * pb) / eq : null;
+        const move = smh3Shares * pb * trCut1;
+        smh3Shares -= move / pb;
+        smhShares += move / pa;
+        trades.push([date, "cut",
+                     { k: "trade.desc.trendCut", v: { a: keyA, b: keyB, ma: trShort, pct: (trCut1 * 100).toFixed(0), move: move.toFixed(2) } },
+                     pa, pb, smhShares * pa, smh3Shares * pb]);
+        tradeMarks.push({ date, kind: "cut", equity: smhShares * pa + smh3Shares * pb, priceA: pa, priceB: pb });
+        leverDays = 0;
+      } else if (trStage === 0 && prevStage !== 0 && trReenter && trWeightBefore != null) {
+        // 站回均线（50MA 回补 / 200MA 转多）：把杠杆占比恢复到减仓前的水平。
+        // 不能指望回撤档位去补——牛市小回调根本够不到 15% 档，那样每跌破一次
+        // 均线杠杆就少一块，永远回不来。
+        const eq = smhShares * pa + smh3Shares * pb;
+        const want = eq * trWeightBefore;
+        const move = Math.min(want - smh3Shares * pb, smhShares * pa);
+        if (move > 1e-9) {
+          smhShares -= move / pa;
+          smh3Shares += move / pb;
+          trades.push([date, "add",
+                       { k: "trade.desc.trendBack", v: { a: keyA, b: keyB, ma: prevStage === 2 ? trLong : trShort, move: move.toFixed(2) } },
+                       pa, pb, smhShares * pa, smh3Shares * pb]);
+          tradeMarks.push({ date, kind: "add", equity: smhShares * pa + smh3Shares * pb, priceA: pa, priceB: pb });
+        }
+        trWeightBefore = null;
+      } else if (trStage === 0 && prevStage !== 0) {
+        trWeightBefore = null;
+      }
+
+      trendNoAdd = trBlock && trStage === 2;
+
+      // 轮动对照组：目标权重变化时全额再平衡
+      if (trStage !== prevStage) {
+        const tb = trTargetB();
+        const rv = rotAShares * pa + rotBShares * pb;
+        rotBShares = (rv * tb) / pb;
+        rotAShares = (rv * (1 - tb)) / pa;
+      }
+      equityTrendRotate.push(rotAShares * pa + rotBShares * pb);
+    }
+
     for (const lv of DRAWDOWN_LEVELS) {
       if (ddFired.has(lv)) continue;
       if (ddPct >= lv) {
         const ratio = (drawdowns[lv] || 0) / 100.0;
-        if (ratio > 0 && smhShares > 0) {
+        if (ratio > 0 && smhShares > 0 && !trendNoAdd) {
           const smhValue = smhShares * pa;
           const move = smhValue * ratio;
           smhShares -= move / pa;
@@ -288,6 +451,8 @@ const smhSeries = seriesMap(keyA);
     trades, troughs,
     equityDates, equityStrategy,
     equityHoldA, equityHoldB, equity5050,
+    equityTrendRotate,
+    trendOn: trOn,
     equityCSI300: benches[0].equity,
     tradeMarks,
     flows, totalInvested, monthlyPct: monthlyPct || 0, monthlyCash,
