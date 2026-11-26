@@ -536,6 +536,25 @@
       <li data-i18n-html="hyb.step5">⑤ <b>交回趋势过滤</b>：价格重新站上长均线 → 退出深跌模式，均线状态与杠杆占比记录全部重置，回到 ①。阈值填 0 即关闭混合，退化为纯趋势过滤。</li>
     </ol>
     <div class="note" data-i18n="hyb.rule">规律（SMH/SOXL 实测）：持有时间越长，保护越吃亏——全历史约 0.40 倍于动态策略末值；而从高点进场、持有 5 年左右时保护反而更赚（2021 年初起算约 1.35 倍），且最大回撤在任何起点都更低（约 -63% vs -80%）。所以它更适合「怕深度回撤、或刚好在高位进场」的情形。</div>
+    <div class="lbl" data-i18n="hyb.when.h">🧭 什么时候「混合保护」真的更优（滚动窗口实测）</div>
+    <div class="note" data-i18n-html="hyb.when.intro">口径：SMH/SOXL、18000/82000、默认参数，2010-03 以来每月取一个起点滚动回测，分别统计不同持有年限下混合保护<b>跑赢动态策略的样本比例（胜率）</b>与<b>终值中位比（混合 ÷ 动态）</b>。判别力最强的变量不是进场点，而是<b>持有期内基准端有没有发生一次大跌</b>。</div>
+    <div class="tbl-wrap">
+      <table class="cmp-tbl">
+        <thead><tr>
+          <th data-i18n="hyb.when.th.case">情形（持有期内 SMH 峰谷最大跌幅）</th>
+          <th data-i18n="hyb.when.th.y1">持有 1 年</th>
+          <th data-i18n="hyb.when.th.y2">持有 2 年</th>
+          <th data-i18n="hyb.when.th.y3">持有 3 年</th>
+          <th data-i18n="hyb.when.th.y5">持有 5 年</th>
+        </tr></thead>
+        <tbody data-i18n-html="hyb.when.rows"></tbody>
+      </table>
+    </div>
+    <div class="note" data-i18n-html="hyb.when.sum">
+      <b>✅ 混合更优的三类场景</b>：① 持有期较短（1–3 年）且期间撞上一次 ≥40% 的危机级深跌（胜率 100%/100%/68%，终值中位领先 1.5–1.65 倍）；② 在历史高点附近进场、随后立刻进熊市——2021-11 高点起算：到 2022 熊底 1.63 倍、到 2023 收复 1.54 倍、到今天 1.38 倍，2024-07 高点起算到今天 1.22 倍；③ 基准端整段零增长或负增长的震荡市（SMH 年化 &lt;0 的窗口：1 年胜率 73%、2 年 100%）。<br/>
+      <b>❌ 混合更差的场景</b>：持有 5 年以上的长牛段（5 年窗口全样本胜率仅 15%、中位 0.72 倍；10 年窗口胜率 0%、约 0.4–0.5 倍），以及期间从未出现 25% 级别回调的顺风段（1 年胜率 17%、3 年 4%）。原因是趋势过滤会错过深跌后最猛的那段反弹，而这段反弹的复利在长周期里被不断放大。<br/>
+      <b>共同点</b>：混合的最大回撤在所有情形都低约 10–15 个百分点（例：-55% 对 -67%）。所以它买的是「少挨一次腰斩」，不是更高终值——持有期越长、越确信能扛住回撤，就越该关掉它。
+    </div>
     <div class="note" id="hybridState"></div>
     <div class="tbl-wrap">
       <table class="cmp-tbl">
@@ -610,7 +629,7 @@ document.write('<script src="data.js?v=9&t=' + SMH_CACHE_T + '"><\/script>');
 // 前端脚本同样附加 token：Safari 等浏览器对 index.html 自身的缓存很顽固，
 // 只靠手动 bump ?v= 时，拿到旧 index.html 的用户仍会继续加载旧 JS。
 (function () {
-  var files = ['i18n.js?v=26', 'backtest.js?v=21', 'app.js?v=42'];
+  var files = ['i18n.js?v=27', 'backtest.js?v=21', 'app.js?v=42'];
   for (var i = 0; i < files.length; i++) {
     document.write('<script src="' + files[i] + '&t=' + SMH_CACHE_T + '"><\/script>');
   }
