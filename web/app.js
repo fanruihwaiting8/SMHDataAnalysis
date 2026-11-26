@@ -676,6 +676,14 @@
   const SIM_RMSE_SCALE = 0.12;                    // 路径偏离度 -> 相似度的衰减尺度(对数收益)
   const SIM_FWD = [126, 252];                     // 相似日之后观察的区间(半年/一年)
 
+  // 「按持有年限的建议」(高级模式专属)：同一个进场点，打算拿 1 年和打算拿 10 年，
+  // 最优打法并不一样——短期怕的是中途腰斩，长期怕的是保护成本年复一年地吃掉复利。
+  const HZ_LIST = [252, 756, 1260, 2520];  // 1/3/5/10 年
+  const HZ_W_STEP = 20;                    // 占比搜索步长(%)：比主表粗，控制计算量
+  const HZ_MAX_SAMPLES = 12;               // 每个年限的样本上限
+  const HZ_MIN_SAMPLES = 3;                // 少于此数不给结论
+  const HZ_TIE_TOL = 0.05;                 // 最差情形终值几乎并列时的容差
+
   function median(arr) {
     const a = arr.slice().sort((x, y) => x - y), n = a.length;
     if (!n) return NaN;
@@ -712,7 +720,8 @@
   // 固定一个初始杠杆端占比 w(%)，在所有样本上回测并聚合统计
   // monthlyPct > 0 时样本内也按月注入，倍数口径改为「终值 / 该样本累计投入」，
   // 否则定投样本的倍数会被陆续投入的新钱稀释，无法横向比较。
-  function evalWeight(src, dd, rb, samples, w, total, monthlyPct) {
+  // tOpts 不传时沿用界面上的趋势设置；「按持有年限的建议」会显式传 关闭/混合保护 两套。
+  function evalWeight(src, dd, rb, samples, w, total, monthlyPct, tOpts) {
     const capB = total * w / 100, capA = total - capB;
     const mults = [], dds = [];
     let wins = 0, used = 0;
@@ -724,7 +733,7 @@
           drawdowns: dd, rebounds: rb, startDate: s.start, endDate: s.end,
           monthlyPct: monthlyPct || 0,
           holdDays: holdDaysNow(), holdRatio: HOLD_RATIO,
-          ...trendOpts(),
+          ...(tOpts || trendOpts()),
         });
       } catch (e) { continue; }
       const m = (monthlyPct > 0)
@@ -1038,6 +1047,98 @@
     return h + "</tbody></table></div>";
   }
 
+  // 在一组「占比 -> 样本统计」里选优：中位数终值最高；几乎并列时取回撤更小的那个。
+  function pickRec(list) {
+    if (!list.length) return null;
+    const top = list.slice().sort((x, y) => y.medMult - x.medMult)[0];
+    const tie = list.filter((r) => r.medMult >= top.medMult * (1 - ADVICE_TIE_TOL));
+    return tie.slice().sort((x, y) => x.medDD - y.medDD)[0] || top;
+  }
+
+  // 年限表专用选优：按「样本里最差那一次的终值」挑。
+  // 中位数口径在任何年限都会把占比顶到阶梯上限（杠杆端中位收益单调更高），分不出年限差异；
+  // 改看最差情形后，短持有期的尾部风险会自动把占比压下来，长持有期复利占优才允许满配。
+  function pickHz(list) {
+    if (!list.length) return null;
+    const top = list.slice().sort((x, y) => y.worstMult - x.worstMult)[0];
+    const tie = list.filter((r) => r.worstMult >= top.worstMult * (1 - HZ_TIE_TOL));
+    return tie.slice().sort((x, y) => x.medDD - y.medDD)[0] || top;
+  }
+
+  function thinSamples(list, max) {
+    if (list.length <= max) return list;
+    const out = [], step = (list.length - 1) / (max - 1);
+    for (let k = 0; k < max; k++) out.push(list[Math.round(k * step)]);
+    return out;
+  }
+
+  // 占比候选：粗网格 + 一定带上阶梯上限本身（上限不是 20 的整数倍时也不会漏）
+  function horizonWeights(cap) {
+    const ws = [];
+    for (let w = 0; w <= 100; w += HZ_W_STEP) if (w <= cap) ws.push(w);
+    if (cap > 0 && ws[ws.length - 1] !== cap) ws.push(Math.round(cap));
+    return ws.length ? ws : [0];
+  }
+
+  // 每个持有年限各算一遍：先在「不开保护」下按最差情形挑初始占比，
+  // 再把同一占比叠上混合保护跑一次，看保护是赚了还是亏了。
+  function horizonAdvice(src, st, tl, dd, rb, total, monthlyPct, cap) {
+    const off = { trendOn: false }, hyb = hybridOpts();
+    const ws = horizonWeights(cap);
+    return HZ_LIST.map((days) => {
+      const samples = thinSamples(pickSamples(tl, st, days), HZ_MAX_SAMPLES);
+      if (samples.length < HZ_MIN_SAMPLES) return { days, n: samples.length };
+      const rows = [];
+      ws.forEach((w) => {
+        const r = evalWeight(src, dd, rb, samples, w, total, monthlyPct, off);
+        if (r) rows.push(r);
+      });
+      const rec = pickHz(rows);
+      if (!rec) return { days, n: samples.length };
+      const prot = evalWeight(src, dd, rb, samples, rec.w, total, monthlyPct, hyb);
+      return { days, n: samples.length, rec, prot };
+    });
+  }
+
+  // 保护开不开的判定：收益几乎不掉就开；掉得不多但回撤削得明显算「可选」；否则宁可降占比。
+  function hzVerdict(r) {
+    if (!r.rec || !r.prot || !(r.rec.medMult > 0)) return "adv.hz.v.na";
+    if (!r.rec.w) return "adv.hz.v.noLev";  // 建议占比为 0 时没有杠杆端，趋势保护无从谈起
+    const gain = r.prot.medMult / r.rec.medMult;
+    const cut = r.rec.medDD - r.prot.medDD;
+    if (gain >= 0.98) return "adv.hz.v.on";
+    if (gain >= 0.85 && cut >= 8) return "adv.hz.v.opt";
+    return "adv.hz.v.off";
+  }
+
+  function renderAdviceHorizon(src, list, cap) {
+    let h = `<div class="adv-sec">${T("adv.hz.sec")}</div>`
+      + `<div class="note" style="margin-bottom:8px">${T("adv.hz.note", { cap: cap, nb: src.nb })}</div>`
+      + '<div class="tbl-wrap"><table class="cmp-tbl"><thead><tr>'
+      + `<th>${T("adv.hz.th.hold")}</th><th>${T("adv.hz.th.w")}</th>`
+      + `<th>${T("adv.hz.th.med")}</th><th>${T("adv.hz.th.worst")}</th>`
+      + `<th>${T("adv.hz.th.dd")}</th>`
+      + `<th>${T("adv.hz.th.prot")}</th><th>${T("adv.hz.th.verdict")}</th>`
+      + `<th>${T("adv.tbl.th.n")}</th>`
+      + "</tr></thead><tbody>";
+    list.forEach((r) => {
+      const label = T("adv.hz.year", { y: Math.round(r.days / 252) });
+      if (!r.rec) {
+        h += `<tr style="opacity:.55"><td>${label}</td>`
+          + `<td colspan="6">${T("adv.hz.few")}</td><td>${r.n}</td></tr>`;
+        return;
+      }
+      const prot = r.prot
+        ? `${r.prot.medMult.toFixed(2)}× / ${r.prot.medDD.toFixed(1)}%` : "—";
+      h += `<tr><td>${label}</td><td><b>${r.rec.w}%</b></td>`
+        + `<td>${r.rec.medMult.toFixed(2)}×</td><td>${r.rec.worstMult.toFixed(2)}×</td>`
+        + `<td>${r.rec.medDD.toFixed(1)}%</td>`
+        + `<td>${prot}</td><td>${T(hzVerdict(r))}</td><td>${r.n}</td></tr>`;
+    });
+    return h + "</tbody></table></div>"
+      + `<div class="note" style="margin-top:6px">${T("adv.hz.tail")}</div>`;
+  }
+
   // 组装「进场建议」卡片内容
   function buildAdvice(src, dd, rb, total, monthlyPct) {
     const body = $("adviceBody"), sub = $("adviceSub");
@@ -1111,8 +1212,7 @@
     const usable = pool.length ? pool : rows.filter((r) => r.w === 0);
     const byMult = usable.slice().sort((x, y) => y.medMult - x.medMult);
     const top = byMult[0];
-    const tie = usable.filter((r) => r.medMult >= top.medMult * (1 - ADVICE_TIE_TOL));
-    const recommended = tie.slice().sort((x, y) => x.medDD - y.medDD)[0] || top;
+    const recommended = pickRec(usable) || top;
     const full = rows.filter((r) => r.w === 100)[0];
 
     const firedTxt = st.ddFired.length
@@ -1129,6 +1229,11 @@
     html += renderAdvicePlans(src, recommended, total, holdDays, capNote);
     html += renderAdviceSimilar(src, similarAnalysis(src.a, SIM_WIN, SIM_TOP));
     html += renderAdviceTable(rows, recommended, cap);
+    // 高级模式：同一进场点按持有年限再分一次建议（计算量较大，普通模式不跑）
+    if (proOn()) {
+      html += renderAdviceHorizon(
+        src, horizonAdvice(src, st, tl, dd, rb, total, monthlyPct, cap), cap);
+    }
     const recW = recommended.w;
     html += renderAdviceActions(src, st, dd, rb, total * (100 - recW) / 100, total * recW / 100);
     body.innerHTML = html;
