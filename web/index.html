@@ -438,6 +438,10 @@
           <label data-i18n="trend.cut">跌破短均线减仓 (%)</label>
           <input id="trendShortCut" type="number" min="0" max="100" step="5" value="30" />
         </div>
+        <div class="field" data-i18n-title="trend.deep.title" title="混合模式：基准端自高点回撤达到该幅度后，暂时交还给「回撤补仓阶梯」逻辑，即深跌时照样加杠杆；价格重新站上长均线后再交回趋势过滤。填 0 表示不启用混合">
+          <label data-i18n="trend.deep">深跌交还阈值 (%)</label>
+          <input id="trendDeepDD" type="number" min="0" max="95" step="5" value="35" />
+        </div>
         <label class="chk" data-i18n-title="trend.block.title" title="清空杠杆期间忽略回撤补仓档，避免「今天补进去、明天又被清掉」的来回摩擦">
           <input type="checkbox" id="trendBlockAdd" checked /> <span data-i18n="trend.block">空头期不补仓</span>
         </label>
@@ -445,7 +449,8 @@
           <input type="checkbox" id="trendReenter" checked /> <span data-i18n="trend.reenter">转多恢复仓位</span>
         </label>
       </div>
-      <div class="note" data-i18n="trend.note">历史回测中它显著压低最大回撤，但也会明显降低末值——超额收益恰恰来自「深跌时加杠杆」，与趋势过滤的哲学相反。建议配合图中「200日均线轮动」对照线一起看。</div>
+      <div class="note" data-i18n="trend.note">纯趋势过滤能显著压低最大回撤（SMH/SOXL 全历史约 -80% → -59%），但末值也明显下降（约 2136x → 114x）——超额收益恰恰来自「深跌时加杠杆」。因此这里给了「深跌交还阈值」做混合：默认 35%，即回撤 35% 以内交给趋势过滤避险，跌穿 35% 后交还补仓阶梯继续加杠杆，全历史约 860x / -63%，兼顾两头。建议配合图中「200日均线轮动」对照线一起看。</div>
+      <div class="note"><a href="trend_compare.html" target="_blank" rel="noopener" data-i18n="trend.cmpLink">📊 查看「开 / 关 / 混合」收益曲线对比（全历史，独立页面）</a></div>
     </div>
     <div class="dcaRec" id="dcaRec" style="display:none"></div>
   </div>
@@ -563,7 +568,7 @@ document.write('<script src="data.js?v=9&t=' + SMH_CACHE_T + '"><\/script>');
 // 前端脚本同样附加 token：Safari 等浏览器对 index.html 自身的缓存很顽固，
 // 只靠手动 bump ?v= 时，拿到旧 index.html 的用户仍会继续加载旧 JS。
 (function () {
-  var files = ['i18n.js?v=21', 'backtest.js?v=20', 'app.js?v=36'];
+  var files = ['i18n.js?v=22', 'backtest.js?v=21', 'app.js?v=37'];
   for (var i = 0; i < files.length; i++) {
     document.write('<script src="' + files[i] + '&t=' + SMH_CACHE_T + '"><\/script>');
   }

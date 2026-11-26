@@ -103,6 +103,7 @@ function runBacktest(opts) {
     trendConfirm = 2,
     trendShortCut = 30,
     trendBlockAdd = true,
+    trendDeepDD = 0,
     trendReenter = true,
   } = opts;
 
@@ -162,6 +163,9 @@ const smhSeries = seriesMap(keyA);
   const trCut1 = Math.min(1, Math.max(0, (Number(trendShortCut) || 0) / 100));
   const trBlock = trendBlockAdd !== false;
   const trReenter = trendReenter !== false;
+  // 深跌交接阈值（0=关闭）：基准端回撤达到该幅度且仍在长均线下方时，趋势过滤
+  // 让位给「深跌加杠杆」的回撤补仓阶梯，直到价格重新站回长均线才交还。
+  const trDeepDD = Math.max(0, Number(trendDeepDD) || 0);
   // 均线一律建在基准端（1 倍标的）上：杠杆端自身波动被放大，均线噪声大得多
   const maL = trOn ? smaSeries(allCommon, smhSeries, trLong) : null;
   const maS = trOn ? smaSeries(allCommon, smhSeries, trShort) : null;
@@ -170,14 +174,36 @@ const smhSeries = seriesMap(keyA);
   let trBelow = 0;
   // 短均线减仓前的杠杆端占比：站回短均线时按它把仓位买回原比例
   let trWeightBefore = null;
+  // 是否处于深跌交接模式（此期间趋势过滤不干预，补仓阶梯接管）
+  let trDeep = false;
+  let deepEnters = 0, deepDays = 0;
+  // 纯「长均线轮动」对照组用独立状态机，不受深跌交接影响
+  let rotStage = 0, rotBelow = 0;
   if (trOn) {
     const m0 = maL[start], s0 = maS[start];
     if (m0 != null && m0 > 0 && p0a < m0 * (1 - trBuf)) { trStage = 2; trBelow = trConfirm; }
     else if (s0 != null && s0 > 0 && p0a < s0) { trStage = 1; }
+    rotStage = trStage; rotBelow = trBelow;
   }
   // 纯「200 日均线轮动」对照组：同样的现金流，趋势内 100% 杠杆端、
   // 短均线破位降到 (1−trendShortCut)、跌破包络带 100% 基准端。
-  const trTargetB = () => (trStage === 0 ? 1 : trStage === 1 ? 1 - trCut1 : 0);
+  const trTargetB = () => (rotStage === 0 ? 1 : rotStage === 1 ? 1 - trCut1 : 0);
+  // 均线状态机单步推进（策略与对照组共用同一套判定规则）
+  function stepStage(stage, below, price, mL, mS) {
+    if (mL == null || !(mL > 0)) return [stage, below];
+    let bl = price < mL * (1 - trBuf) ? below + 1 : 0;
+    let st = stage;
+    if (st === 2) {
+      if (price > mL) st = 0;
+    } else if (bl >= trConfirm) {
+      st = 2;
+    } else if (st === 0) {
+      if (mS != null && mS > 0 && price < mS) st = 1;
+    } else if (mS != null && mS > 0 && price > mS) {
+      st = 0;
+    }
+    return [st, bl];
+  }
 
   const total = capA + capB;
   let holdAShares = total / p0a;
@@ -286,31 +312,46 @@ const smhSeries = seriesMap(keyA);
       ddPct = ((peak - pa) / peak) * 100.0;
     }
 
-    // ===== 趋势过滤（200 日均线轮动 + 均线包络带阶梯离场）=====
+    // ===== 趋势过滤（长均线轮动 + 均线包络带阶梯离场）=====
     // 放在回撤补仓之前：风控中（stage=2）时当日的补仓档位直接被拦截，
     // 避免「先补进去、再被清掉」的来回摩擦。
     let trendNoAdd = false;
     if (trOn) {
       const mL = maL[date], mS = maS[date];
-      const prevStage = trStage;
-      if (mL != null && mL > 0) {
-        // 包络带：只有跌破 trendLong×(1−buf) 才开始计确认天数，震荡擦线不算
-        if (pa < mL * (1 - trBuf)) trBelow += 1;
-        else trBelow = 0;
 
-        if (trStage === 2) {
-          // 风控中：只认长均线，重新站上即解除（不设二次缓冲，否则会错过牛市初段）
-          if (pa > mL) trStage = 0;
-        } else if (trBelow >= trConfirm) {
-          trStage = 2;
-        } else if (trStage === 0) {
-          if (mS != null && mS > 0 && pa < mS) trStage = 1;
-        } else if (mS != null && mS > 0 && pa > mS) {
-          // 已短均线减仓，价格重新站上短均线才回补（否则 50MA 下方会被反复
-          // 「减一天、第二天补回」地来回摩擦，减仓等于白做）
-          trStage = 0;
+      // --- 纯均线轮动对照组：独立状态机，不受深跌交接影响 ---
+      const rotPrev = rotStage;
+      const rs = stepStage(rotStage, rotBelow, pa, mL, mS);
+      rotStage = rs[0]; rotBelow = rs[1];
+      if (rotStage !== rotPrev) {
+        const tb = trTargetB();
+        const rv = rotAShares * pa + rotBShares * pb;
+        rotBShares = (rv * tb) / pb;
+        rotAShares = (rv * (1 - tb)) / pa;
+      }
+      equityTrendRotate.push(rotAShares * pa + rotBShares * pb);
+
+      // --- 深跌交接：回撤足够深且仍在长均线下方时，趋势过滤让位给「深跌加杠杆」的
+      // 补仓阶梯；直到价格重新站回长均线才交还给趋势过滤。两个条件互斥（跌破/站上
+      // 长均线），所以不会在阈值边界反复切换。
+      if (trDeepDD > 0 && mL != null && mL > 0) {
+        if (!trDeep && ddPct >= trDeepDD && pa < mL) {
+          trDeep = true;
+          trStage = 0; trBelow = 0; trWeightBefore = null;
+          // 把补仓阶梯的已触发记录清空，让它按当前回撤深度重新逐档接管仓位
+          ddFired.clear();
+          deepEnters += 1;
+        } else if (trDeep && pa > mL) {
+          trDeep = false;
+          trStage = 0; trBelow = 0; trWeightBefore = null;
         }
       }
+      if (trDeep) deepDays += 1;
+
+      if (!trDeep) {
+      const prevStage = trStage;
+      const ts = stepStage(trStage, trBelow, pa, mL, mS);
+      trStage = ts[0]; trBelow = ts[1];
 
       // 清仓：写成幂等条件（而非只在状态跳变时执行），这样「回测起点就已在
       // 风控中」也能把初始杠杆仓位换回基准端。
@@ -343,8 +384,6 @@ const smhSeries = seriesMap(keyA);
         leverDays = 0;
       } else if (trStage === 0 && prevStage !== 0 && trReenter && trWeightBefore != null) {
         // 站回均线（50MA 回补 / 200MA 转多）：把杠杆占比恢复到减仓前的水平。
-        // 不能指望回撤档位去补——牛市小回调根本够不到 15% 档，那样每跌破一次
-        // 均线杠杆就少一块，永远回不来。
         const eq = smhShares * pa + smh3Shares * pb;
         const want = eq * trWeightBefore;
         const move = Math.min(want - smh3Shares * pb, smhShares * pa);
@@ -362,15 +401,7 @@ const smhSeries = seriesMap(keyA);
       }
 
       trendNoAdd = trBlock && trStage === 2;
-
-      // 轮动对照组：目标权重变化时全额再平衡
-      if (trStage !== prevStage) {
-        const tb = trTargetB();
-        const rv = rotAShares * pa + rotBShares * pb;
-        rotBShares = (rv * tb) / pb;
-        rotAShares = (rv * (1 - tb)) / pa;
       }
-      equityTrendRotate.push(rotAShares * pa + rotBShares * pb);
     }
 
     for (const lv of DRAWDOWN_LEVELS) {
@@ -453,6 +484,8 @@ const smhSeries = seriesMap(keyA);
     equityHoldA, equityHoldB, equity5050,
     equityTrendRotate,
     trendOn: trOn,
+    trendDeepEnters: deepEnters,
+    trendDeepDays: deepDays,
     equityCSI300: benches[0].equity,
     tradeMarks,
     flows, totalInvested, monthlyPct: monthlyPct || 0, monthlyCash,

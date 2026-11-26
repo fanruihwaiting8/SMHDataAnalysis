@@ -107,7 +107,7 @@
   // 趋势过滤（高级模式专属，默认关闭）：《Leverage for the Long Run》的
   // 200 日均线动态杠杆轮动 + 均线包络带阶梯离场。
   // 只在网页版实现，关闭时与 Python 引擎结果完全一致。
-  const TREND_DEF = { long: 200, short: 50, buf: 3, confirm: 2, cut: 30 };
+  const TREND_DEF = { long: 200, short: 50, buf: 3, confirm: 2, cut: 30, deep: 35 };
   function numOf(id, dflt, min, max) {
     const el = $(id);
     let v = el ? +el.value : NaN;
@@ -126,6 +126,7 @@
       trendBuf: numOf("trendBuf", TREND_DEF.buf, 0, 30),
       trendConfirm: Math.round(numOf("trendConfirm", TREND_DEF.confirm, 1, 30)),
       trendShortCut: numOf("trendShortCut", TREND_DEF.cut, 0, 100),
+      trendDeepDD: numOf("trendDeepDD", TREND_DEF.deep, 0, 95),
       trendBlockAdd: !($("trendBlockAdd") && !$("trendBlockAdd").checked),
       trendReenter: !($("trendReenter") && !$("trendReenter").checked),
     };
@@ -1654,7 +1655,7 @@
       });
     }
     ["trendLong", "trendShort", "trendBuf", "trendConfirm", "trendShortCut",
-     "trendBlockAdd", "trendReenter"].forEach((id) => {
+     "trendDeepDD", "trendBlockAdd", "trendReenter"].forEach((id) => {
       if ($(id)) $(id).addEventListener("change", () => { if (trendOn()) run(); });
     });
     document.querySelectorAll("#curveToggle span").forEach((s) => {
