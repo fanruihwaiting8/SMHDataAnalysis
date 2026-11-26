@@ -449,8 +449,7 @@
           <input type="checkbox" id="trendReenter" checked /> <span data-i18n="trend.reenter">转多恢复仓位</span>
         </label>
       </div>
-      <div class="note" data-i18n="trend.note">纯趋势过滤能显著压低最大回撤（SMH/SOXL 全历史约 -80% → -59%），但末值也明显下降（约 2136x → 114x）——超额收益恰恰来自「深跌时加杠杆」。因此这里给了「深跌交还阈值」做混合：默认 35%，即回撤 35% 以内交给趋势过滤避险，跌穿 35% 后交还补仓阶梯继续加杠杆，全历史约 860x / -63%，兼顾两头。建议配合图中「200日均线轮动」对照线一起看。</div>
-      <div class="note"><a href="trend_compare.html" target="_blank" rel="noopener" data-i18n="trend.cmpLink">📊 查看「开 / 关 / 混合」收益曲线对比（全历史，独立页面）</a></div>
+      <div class="note" data-i18n="trend.note">纯趋势过滤能显著压低最大回撤（SMH/SOXL 全历史约 -80% → -59%），但末值也明显下降（约 2136x → 114x）——超额收益恰恰来自「深跌时加杠杆」。因此这里给了「深跌交还阈值」做混合：默认 35%，即回撤 35% 以内交给趋势过滤避险，跌穿 35% 后交还补仓阶梯继续加杠杆，全历史约 860x / -63%，兼顾两头。无需打开本开关也能在净值曲线里勾选「混合保护」对照线直接观察这条策略。</div>
     </div>
     <div class="dcaRec" id="dcaRec" style="display:none"></div>
   </div>
@@ -466,6 +465,7 @@
     <h2 data-i18n="chart.h2">净值曲线</h2>
     <div class="toggle" id="curveToggle">
       <span data-k="strategy" class="on" data-i18n="curve.strategy">动态策略</span>
+      <span data-k="hybrid" class="on" data-i18n="curve.hybrid" data-i18n-title="curve.hybrid.title" title="在当前全部参数不变的前提下，额外叠加「趋势过滤 + 深跌交还阈值」保护的同一策略：价格在长均线下方时降杠杆避险，但基准端自高点回撤超过阈值（默认 35%）后交还补仓阶梯继续加杠杆。用来观察保护策略在长时间线上的收益/回撤变化规律">混合保护策略</span>
       <span data-k="hold5050" data-i18n="curve.hold5050" title="把总资金严格按 50%:50% 买入基准端与杠杆端后不再调仓（与上面设置的初始配比无关）；定投注入也按 50%:50% 分摊">50-50 不动</span>
       <span data-k="holdA" class="on" data-i18n="curve.holdA">纯持基准</span>
       <span data-k="holdB" class="on" data-i18n="curve.holdB">纯持杠杆</span>
@@ -568,7 +568,7 @@ document.write('<script src="data.js?v=9&t=' + SMH_CACHE_T + '"><\/script>');
 // 前端脚本同样附加 token：Safari 等浏览器对 index.html 自身的缓存很顽固，
 // 只靠手动 bump ?v= 时，拿到旧 index.html 的用户仍会继续加载旧 JS。
 (function () {
-  var files = ['i18n.js?v=22', 'backtest.js?v=21', 'app.js?v=37'];
+  var files = ['i18n.js?v=23', 'backtest.js?v=21', 'app.js?v=38'];
   for (var i = 0; i < files.length; i++) {
     document.write('<script src="' + files[i] + '&t=' + SMH_CACHE_T + '"><\/script>');
   }

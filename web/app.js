@@ -117,10 +117,10 @@
     return v;
   }
   function trendOn() { return !!(proOn() && $("trendOn") && $("trendOn").checked); }
-  function trendOpts() {
-    if (!trendOn()) return { trendOn: false };
+  // 趋势参数读取单独抽出：主回测（trendOpts）与「混合保护」对照曲线（hybridOpts）共用，
+  // 后者即使没开高级模式也要能拿到一套默认参数。
+  function trendParams() {
     return {
-      trendOn: true,
       trendLong: Math.round(numOf("trendLong", TREND_DEF.long, 20, 400)),
       trendShort: Math.round(numOf("trendShort", TREND_DEF.short, 5, 200)),
       trendBuf: numOf("trendBuf", TREND_DEF.buf, 0, 30),
@@ -130,6 +130,17 @@
       trendBlockAdd: !($("trendBlockAdd") && !$("trendBlockAdd").checked),
       trendReenter: !($("trendReenter") && !$("trendReenter").checked),
     };
+  }
+  function trendOpts() {
+    if (!trendOn()) return { trendOn: false };
+    return Object.assign({ trendOn: true }, trendParams());
+  }
+  // 混合保护策略：恒开趋势过滤 + 深跌交还（阈值填 0 时回落到默认值，保证这条线始终是「混合」而非纯趋势过滤）
+  function hybridOpts() {
+    const p = trendParams();
+    if (!(p.trendDeepDD > 0)) p.trendDeepDD = TREND_DEF.deep;
+    p.trendOn = true;
+    return p;
   }
 
   // ---- 下拉式日期选择器：年/月/日三段下拉 <-> 隐藏 input(YYYY-MM-DD) 双向同步 ----
@@ -1151,18 +1162,18 @@
     refreshAllocTip();
 
     let res;
+    const baseOpts = {
+      keyA: src.a, keyB: src.b, capA, capB,
+      drawdowns: dd, rebounds: rb, startDate, endDate, monthlyPct,
+      holdDays: holdDaysNow(), holdRatio: HOLD_RATIO,
+    };
     try {
-      res = BT.runBacktest({
-        keyA: src.a, keyB: src.b, capA, capB,
-        drawdowns: dd, rebounds: rb, startDate, endDate, monthlyPct,
-        holdDays: holdDaysNow(), holdRatio: HOLD_RATIO,
-        ...trendOpts(),
-      });
+      res = BT.runBacktest(Object.assign({}, baseOpts, trendOpts()));
     } catch (e) {
       alert(T("run.failed", { e: e.message }));
       return;
     }
-    lastResult = { res, src };
+    lastResult = { res, src, baseOpts };
     renderDcaSum(res);
     renderMetrics(res);
     renderChart(res, src);
@@ -1228,17 +1239,36 @@
     return on;
   }
 
+  // 「混合保护策略」对照曲线：在当前全部参数不变的前提下，额外跑一次「趋势过滤 + 深跌交还」
+  // 的回测，把它的净值画到同一张图上，便于看保护策略在长时间线上的变化规律。
+  // 只在勾选该曲线时才计算，并缓存到 res 上（undefined=未算过，null=算不出）。
+  function ensureHybrid() {
+    if (!lastResult || !lastResult.baseOpts) return;
+    const res = lastResult.res;
+    if (res.equityHybrid !== undefined) return;
+    res.equityHybrid = null;
+    try {
+      const r = BT.runBacktest(Object.assign({}, lastResult.baseOpts, hybridOpts()));
+      if (r.equityStrategy && r.equityStrategy.length === res.equityDates.length) {
+        res.equityHybrid = r.equityStrategy;
+        res.hybridMetrics = r.metrics || null;
+      }
+    } catch (e) { res.equityHybrid = null; }
+  }
+
   function renderChart(res, src) {
     const on = activeCurves();
+    if (on.hybrid) ensureHybrid();
     const series = [];
     const defs = [
       { k: "strategy", name: T("curve.strategy"), data: res.equityStrategy, color: "#f85149" },
+      { k: "hybrid", name: T("curve.hybrid"), data: res.equityHybrid, color: "#2dd4bf" },
       { k: "hold5050", name: T("curve.hold5050"), data: res.equity5050, color: "#8b949e" },
       { k: "holdA", name: T("curve.holdOnly", { k: src.na }), data: res.equityHoldA, color: "#1f6feb" },
       { k: "holdB", name: T("curve.holdOnly", { k: src.nb }), data: res.equityHoldB, color: "#d29922" },
     ];
     defs.forEach((d) => {
-      if (!on[d.k]) return;
+      if (!on[d.k] || !d.data) return;
       series.push({
         name: d.name, type: "line", showSymbol: false, smooth: false,
         lineStyle: { width: 1.6, color: d.color }, itemStyle: { color: d.color },

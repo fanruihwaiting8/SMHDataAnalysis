@@ -136,8 +136,7 @@ Object.assign(window.I18N.zh, {
   "trend.block.title": "清空杠杆期间忽略回撤补仓档，避免「今天补进去、明天又被清掉」的来回摩擦",
   "trend.reenter": "转多恢复仓位",
   "trend.reenter.title": "价格重新站上均线时，把杠杆占比恢复到减仓前的水平；关闭则等回撤档位自然触发",
-  "trend.cmpLink": "📊 查看「开 / 关 / 混合」收益曲线对比（全历史，独立页面）",
-  "trend.note": "纯趋势过滤能显著压低最大回撤（SMH/SOXL 全历史约 -80% → -59%），但末值也明显下降（约 2136x → 114x）——超额收益恰恰来自「深跌时加杠杆」。因此这里给了「深跌交还阈值」做混合：默认 35%，即回撤 35% 以内交给趋势过滤避险，跌穿 35% 后交还补仓阶梯继续加杠杆，全历史约 860x / -63%，兼顾两头。建议配合图中「200日均线轮动」对照线一起看。",
+  "trend.note": "纯趋势过滤能显著压低最大回撤（SMH/SOXL 全历史约 -80% → -59%），但末值也明显下降（约 2136x → 114x）——超额收益恰恰来自「深跌时加杠杆」。因此这里给了「深跌交还阈值」做混合：默认 35%，即回撤 35% 以内交给趋势过滤避险，跌穿 35% 后交还补仓阶梯继续加杠杆，全历史约 860x / -63%，兼顾两头。无需打开本开关也能在净值曲线里勾选「混合保护」对照线直接观察这条策略。",
 });
 Object.assign(window.I18N.en, {
   "param.h2": "Strategy parameters",
@@ -176,8 +175,7 @@ Object.assign(window.I18N.en, {
   "trend.block.title": "Ignore drawdown add-on tiers while leverage is cleared, avoiding the churn of buying today and being forced out tomorrow",
   "trend.reenter": "Restore weight on re-entry",
   "trend.reenter.title": "When price reclaims the moving average, restore the leveraged weight to its pre-trim level; if off, wait for the drawdown tiers to fire naturally",
-  "trend.cmpLink": "📊 Open the on / off / hybrid equity-curve comparison (full history, separate page)",
-  "trend.note": "A pure trend filter clearly cuts the worst drawdown (SMH/SOXL full history roughly -80% → -59%) but also costs a lot of terminal value (about 2136x → 114x) — the excess return of this strategy comes precisely from adding leverage deep in a crash. Hence the \"deep-dip handover\" field: at the default 35%, the trend filter protects shallow dips while anything beyond -35% is handed back to the add-on ladder, giving roughly 860x / -63% over the full history. Read it together with the \"200-day MA rotation\" reference curve.",
+  "trend.note": "A pure trend filter clearly cuts the worst drawdown (SMH/SOXL full history roughly -80% → -59%) but also costs a lot of terminal value (about 2136x → 114x) — the excess return of this strategy comes precisely from adding leverage deep in a crash. Hence the \"deep-dip handover\" field: at the default 35%, the trend filter protects shallow dips while anything beyond -35% is handed back to the add-on ladder, giving roughly 860x / -63% over the full history. You can also just tick the \"Hybrid protected\" curve in the equity chart to watch this variant without enabling this switch.",
 });
 
 // ---------- 高级模式 / 推荐区间 ----------
@@ -254,6 +252,8 @@ Object.assign(window.I18N.zh, {
   "curve.cost": "累计投入成本",
   "curve.csi300": "同期沪深300",
   "curve.trendRotate": "200日均线轮动",
+  "curve.hybrid": "混合保护策略",
+  "curve.hybrid.title": "在当前全部参数不变的前提下，额外叠加「趋势过滤 + 深跌交还阈值」保护的同一策略：价格在长均线下方时降杠杆避险，但基准端自高点回撤超过阈值（默认 35%）后交还补仓阶梯继续加杠杆。用来观察保护策略在长时间线上的收益/回撤变化规律",
   "curve.pnl": "相对成本",
   "curve.span": "累计 {y} 年",
   "cmp.h2": "组合横向对比（跟随上方设定的日期区间）",
@@ -287,6 +287,8 @@ Object.assign(window.I18N.en, {
   "curve.cost": "Cumulative invested",
   "curve.csi300": "CSI 300 (same period)",
   "curve.trendRotate": "200-day MA rotation",
+  "curve.hybrid": "Hybrid protected",
+  "curve.hybrid.title": "The same strategy with all current parameters, plus the \"trend filter + deep-dip handover\" protection layered on top: leverage is cut while price sits below the long MA, but once the base leg is more than the threshold (35% by default) off its high, control goes back to the add-on ladder and leverage keeps being added. Use it to watch how the protection behaves as the horizon lengthens.",
   "curve.pnl": "vs invested",
   "curve.span": "{y} yrs",
   "cmp.h2": "Pair comparison (uses the date range set above)",
