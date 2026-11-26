@@ -104,6 +104,10 @@
   .pro-only { display: none !important; }
   body.pro .pro-only { display: inline-flex !important; }
   body.pro .pro-only.blk { display: block !important; }
+  #hybridCard ol.steps { margin: 6px 0 10px; padding-left: 22px; color: #c9d1d9; font-size: 13px; line-height: 1.75; }
+  #hybridCard ol.steps li { margin-bottom: 4px; }
+  #hybridCard ol.steps b { color: #2dd4bf; }
+  #hybridCard .lbl { margin-top: 14px; }
   /* 档位输入框下方的推荐区间提示 */
   .band { font-size: 11px; color: #8b949e; margin-top: 3px; line-height: 1.4; }
   .band b { color: var(--accent); font-weight: 700; }
@@ -449,7 +453,7 @@
           <input type="checkbox" id="trendReenter" checked /> <span data-i18n="trend.reenter">转多恢复仓位</span>
         </label>
       </div>
-      <div class="note" data-i18n="trend.note">纯趋势过滤能显著压低最大回撤（SMH/SOXL 全历史约 -80% → -59%），但末值也明显下降（约 2136x → 114x）——超额收益恰恰来自「深跌时加杠杆」。因此这里给了「深跌交还阈值」做混合：默认 35%，即回撤 35% 以内交给趋势过滤避险，跌穿 35% 后交还补仓阶梯继续加杠杆，全历史约 860x / -63%，兼顾两头。无需打开本开关也能在净值曲线里勾选「混合保护」对照线直接观察这条策略。</div>
+      <div class="note" data-i18n="trend.note">纯趋势过滤能显著压低最大回撤（SMH/SOXL 全历史约 -80% → -59%），但末值也明显下降（约 2136x → 114x）——超额收益恰恰来自「深跌时加杠杆」。所以默认用「深跌交还阈值 35%」做混合：浅跌交给趋势过滤避险，跌穿 35% 后交还补仓阶梯继续加杠杆。完整机制说明、运行状态与逐笔成交见下方「混合保护策略详情」卡片。</div>
     </div>
     <div class="dcaRec" id="dcaRec" style="display:none"></div>
   </div>
@@ -465,7 +469,7 @@
     <h2 data-i18n="chart.h2">净值曲线</h2>
     <div class="toggle" id="curveToggle">
       <span data-k="strategy" class="on" data-i18n="curve.strategy">动态策略</span>
-      <span data-k="hybrid" class="on" data-i18n="curve.hybrid" data-i18n-title="curve.hybrid.title" title="在当前全部参数不变的前提下，额外叠加「趋势过滤 + 深跌交还阈值」保护的同一策略：价格在长均线下方时降杠杆避险，但基准端自高点回撤超过阈值（默认 35%）后交还补仓阶梯继续加杠杆。用来观察保护策略在长时间线上的收益/回撤变化规律">混合保护策略</span>
+      <span data-k="hybrid" class="on pro-only" data-i18n="curve.hybrid" data-i18n-title="curve.hybrid.title" title="在当前全部参数不变的前提下，额外叠加「趋势过滤 + 深跌交还阈值」保护的同一策略：价格在长均线下方时降杠杆避险，但基准端自高点回撤超过阈值（默认 35%）后交还补仓阶梯继续加杠杆。用来观察保护策略在长时间线上的收益/回撤变化规律">混合保护策略</span>
       <span data-k="hold5050" data-i18n="curve.hold5050" title="把总资金严格按 50%:50% 买入基准端与杠杆端后不再调仓（与上面设置的初始配比无关）；定投注入也按 50%:50% 分摊">50-50 不动</span>
       <span data-k="holdA" class="on" data-i18n="curve.holdA">纯持基准</span>
       <span data-k="holdB" class="on" data-i18n="curve.holdB">纯持杠杆</span>
@@ -510,6 +514,39 @@
       <table>
         <thead><tr><th data-i18n="trade.th.date">成交日</th><th data-i18n="trade.th.type">类型</th><th data-i18n="trade.th.desc">说明</th><th id="thPriceA">基准端成交价</th><th id="thPriceB">杠杆端成交价</th><th id="thValA">基准端持仓市值</th><th id="thValB">杠杆端持仓市值</th><th data-i18n="trade.th.equity">成交后总资金</th></tr></thead>
         <tbody id="tradeBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 混合保护策略详情（高级模式专属） -->
+  <div class="card pro-only blk" id="hybridCard">
+    <h2><span data-i18n="hyb.h2">混合保护策略详情（高级模式）</span> <span class="note" id="hybridSub"></span></h2>
+    <div class="note" data-i18n="hyb.intro">「混合保护策略」= 当前这套补仓/减仓参数 + 趋势过滤 + 深跌交还。它不改动你上面的回撤档位与反弹档位，只在「什么时候允许持杠杆」这件事上多加一层均线判断，并在跌得足够深时把控制权交还给补仓阶梯。下表与下方成交记录完全按你设定的起始/截止日期区间计算。</div>
+    <div class="lbl" data-i18n="hyb.how.h">🔀 混合操作思路（状态机）</div>
+    <ol class="steps">
+      <li data-i18n-html="hyb.step1">① <b>趋势正常</b>：基准端价格在长均线上方 → 完全按你设定的回撤补仓/反弹减仓阶梯运行，与「动态策略」一模一样。</li>
+      <li data-i18n-html="hyb.step2">② <b>短均线破位</b>：跌破短均线 → 先减掉当前杠杆端的一档（默认 30%），并记下减仓前的杠杆占比；站回短均线后按该占比买回。</li>
+      <li data-i18n-html="hyb.step3">③ <b>长均线破位（风控中）</b>：跌破长均线减去包络带缓冲、且连续确认若干日 → 清空杠杆端全部换回基准端；此期间忽略回撤补仓档（避免补进去又被清掉的来回摩擦）。</li>
+      <li data-i18n-html="hyb.step4">④ <b>深跌交还</b>：若基准端自高点回撤 ≥ 深跌交还阈值（默认 35%）且仍在长均线下方 → 暂停趋势过滤，清空已触发记录，把仓位交还给回撤补仓阶梯按当前跌幅逐档重新加杠杆（这是超额收益的来源）。</li>
+      <li data-i18n-html="hyb.step5">⑤ <b>交回趋势过滤</b>：价格重新站上长均线 → 退出深跌模式，均线状态与杠杆占比记录全部重置，回到 ①。阈值填 0 即关闭混合，退化为纯趋势过滤。</li>
+    </ol>
+    <div class="note" data-i18n="hyb.rule">规律（SMH/SOXL 实测）：持有时间越长，保护越吃亏——全历史约 0.40 倍于动态策略末值；而从高点进场、持有 5 年左右时保护反而更赚（2021 年初起算约 1.35 倍），且最大回撤在任何起点都更低（约 -63% vs -80%）。所以它更适合「怕深度回撤、或刚好在高位进场」的情形。</div>
+    <div class="note" id="hybridState"></div>
+    <div class="tbl-wrap">
+      <table class="cmp-tbl">
+        <thead><tr>
+          <th data-i18n="cmp.th.group">组合</th><th data-i18n="cmp.th.final">最终资金</th>
+          <th data-i18n="cmp.th.cagr">CAGR</th><th data-i18n="cmp.th.maxdd">最大回撤</th>
+          <th data-i18n="cmp.th.sharpe">夏普</th><th data-i18n="cmp.th.trades">交易数</th>
+        </tr></thead>
+        <tbody id="hybridCmpBody"></tbody>
+      </table>
+    </div>
+    <div class="lbl"><span data-i18n="hyb.trades.h">混合策略逐笔成交（按上方日期区间）</span> <span class="note" id="hybridCount"></span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th data-i18n="trade.th.date">成交日</th><th data-i18n="trade.th.type">类型</th><th data-i18n="trade.th.desc">说明</th><th id="hThPriceA">基准端成交价</th><th id="hThPriceB">杠杆端成交价</th><th id="hThValA">基准端持仓市值</th><th id="hThValB">杠杆端持仓市值</th><th data-i18n="trade.th.equity">成交后总资金</th></tr></thead>
+        <tbody id="hybridTradeBody"></tbody>
       </table>
     </div>
   </div>
@@ -568,7 +605,7 @@ document.write('<script src="data.js?v=9&t=' + SMH_CACHE_T + '"><\/script>');
 // 前端脚本同样附加 token：Safari 等浏览器对 index.html 自身的缓存很顽固，
 // 只靠手动 bump ?v= 时，拿到旧 index.html 的用户仍会继续加载旧 JS。
 (function () {
-  var files = ['i18n.js?v=23', 'backtest.js?v=21', 'app.js?v=38'];
+  var files = ['i18n.js?v=24', 'backtest.js?v=21', 'app.js?v=39'];
   for (var i = 0; i < files.length; i++) {
     document.write('<script src="' + files[i] + '&t=' + SMH_CACHE_T + '"><\/script>');
   }

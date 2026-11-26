@@ -136,7 +136,7 @@ Object.assign(window.I18N.zh, {
   "trend.block.title": "清空杠杆期间忽略回撤补仓档，避免「今天补进去、明天又被清掉」的来回摩擦",
   "trend.reenter": "转多恢复仓位",
   "trend.reenter.title": "价格重新站上均线时，把杠杆占比恢复到减仓前的水平；关闭则等回撤档位自然触发",
-  "trend.note": "纯趋势过滤能显著压低最大回撤（SMH/SOXL 全历史约 -80% → -59%），但末值也明显下降（约 2136x → 114x）——超额收益恰恰来自「深跌时加杠杆」。因此这里给了「深跌交还阈值」做混合：默认 35%，即回撤 35% 以内交给趋势过滤避险，跌穿 35% 后交还补仓阶梯继续加杠杆，全历史约 860x / -63%，兼顾两头。无需打开本开关也能在净值曲线里勾选「混合保护」对照线直接观察这条策略。",
+  "trend.note": "纯趋势过滤能压低最大回撤（SMH/SOXL 全历史约 -80% → -59%），但末值也大幅下降（约 2136x → 114x）——超额收益恰恰来自「深跌时加杠杆」。因此这里用「深跌交还阈值」做混合：默认 35%，浅跌交给趋势过滤避险，跌穿 35% 后交还补仓阶梯继续加杠杆。完整机制与逐笔成交见下方「混合保护策略详情」卡片。",
 });
 Object.assign(window.I18N.en, {
   "param.h2": "Strategy parameters",
@@ -175,7 +175,47 @@ Object.assign(window.I18N.en, {
   "trend.block.title": "Ignore drawdown add-on tiers while leverage is cleared, avoiding the churn of buying today and being forced out tomorrow",
   "trend.reenter": "Restore weight on re-entry",
   "trend.reenter.title": "When price reclaims the moving average, restore the leveraged weight to its pre-trim level; if off, wait for the drawdown tiers to fire naturally",
-  "trend.note": "A pure trend filter clearly cuts the worst drawdown (SMH/SOXL full history roughly -80% → -59%) but also costs a lot of terminal value (about 2136x → 114x) — the excess return of this strategy comes precisely from adding leverage deep in a crash. Hence the \"deep-dip handover\" field: at the default 35%, the trend filter protects shallow dips while anything beyond -35% is handed back to the add-on ladder, giving roughly 860x / -63% over the full history. You can also just tick the \"Hybrid protected\" curve in the equity chart to watch this variant without enabling this switch.",
+  "trend.note": "A pure trend filter cuts the worst drawdown (SMH/SOXL full history roughly -80% → -59%) but also costs a lot of terminal value (about 2136x → 114x) — the excess return comes precisely from adding leverage deep in a crash. The \"deep-dip handover\" field blends the two: at the default 35%, shallow dips are handled by the trend filter while anything beyond -35% is handed back to the add-on ladder. See the \"Hybrid protected strategy\" card below for the full mechanism and the trade-by-trade log.",
+});
+
+// ---------- 混合保护策略详情（高级模式专属） ----------
+Object.assign(window.I18N.zh, {
+  "hyb.h2": "混合保护策略详情（高级模式）",
+  "hyb.sub": "区间 {s} ~ {e}",
+  "hyb.intro": "「混合保护策略」= 当前这套补仓/减仓参数 + 趋势过滤 + 深跌交还。它不改动你上面的回撤档位与反弹档位，只在「什么时候允许持杠杆」这件事上多加一层均线判断，并在跌得足够深时把控制权交还给补仓阶梯。下表与下方成交记录完全按你设定的起始/截止日期区间计算。",
+  "hyb.how.h": "🔀 混合操作思路（状态机）",
+  "hyb.step1": "① <b>趋势正常</b>：基准端价格在长均线上方 → 完全按你设定的回撤补仓/反弹减仓阶梯运行，与「动态策略」一模一样。",
+  "hyb.step2": "② <b>短均线破位</b>：跌破短均线 → 先减掉当前杠杆端的一档（默认 30%），并记下减仓前的杠杆占比；站回短均线后按该占比买回。",
+  "hyb.step3":"③ <b>长均线破位（风控中）</b>：跌破长均线减去包络带缓冲、且连续确认若干日 → 清空杠杆端全部换回基准端；此期间忽略回撤补仓档（避免补进去又被清掉的来回摩擦）。",
+  "hyb.step4": "④ <b>深跌交还</b>：若基准端自高点回撤 ≥ 深跌交还阈值（默认 35%）且仍在长均线下方 → 暂停趋势过滤，清空已触发记录，把仓位交还给回撤补仓阶梯按当前跌幅逐档重新加杠杆（这是超额收益的来源）。",
+  "hyb.step5": "⑤ <b>交回趋势过滤</b>：价格重新站上长均线 → 退出深跌模式，均线状态与杠杆占比记录全部重置，回到 ①。阈值填 0 即关闭混合，退化为纯趋势过滤。",
+  "hyb.rule": "规律（SMH/SOXL 实测）：持有时间越长，保护越吃亏——全历史约 0.40 倍于动态策略末值；而从高点进场、持有 5 年左右时保护反而更赚（2021 年初起算约 1.35 倍），且最大回撤在任何起点都更低（约 -63% vs -80%）。所以它更适合「怕深度回撤、或刚好在高位进场」的情形。",
+  "hyb.state.param": "运行参数：长均线 {L} 日 / 短均线 {S} 日 / 包络带 {buf}% / 确认 {cfm} 日 / 破短均线减仓 {cut}% / 深跌交还 {deep}%。",
+  "hyb.state.deep": "本区间进入深跌模式 {n} 次，合计 {d} 个交易日。",
+  "hyb.cmp.dyn": "动态策略（当前参数）",
+  "hyb.cmp.hyb": "混合保护策略",
+  "hyb.trades.h": "混合策略逐笔成交（按上方日期区间）",
+  "hyb.none": "本区间内混合策略没有触发任何调仓。",
+  "hyb.fail": "混合策略计算失败，请检查参数或日期区间。",
+});
+Object.assign(window.I18N.en, {
+  "hyb.h2": "Hybrid protected strategy — details (pro mode)",
+  "hyb.sub": "Window {s} – {e}",
+  "hyb.intro": "The \"hybrid protected\" strategy = your current add-on / trim parameters + the trend filter + the deep-dip handover. It does not change the drawdown or rebound tiers you set above; it only adds a moving-average check on *when leverage is allowed*, and hands control back to the add-on ladder once the fall is deep enough. The table and the trade log below are computed strictly over the start/end dates you selected.",
+  "hyb.how.h": "🔀 How the hybrid works (state machine)",
+  "hyb.step1": "① <b>Trend healthy</b>: the base leg trades above its long MA → runs exactly like the \"dynamic strategy\", following your drawdown add-on / rebound trim tiers.",
+  "hyb.step2": "② <b>Short MA broken</b>: price drops below the short MA → trim one slice of the leveraged leg (30% by default) and remember the leveraged weight before the trim; buy it back to that weight once price reclaims the short MA.",
+  "hyb.step3": "③ <b>Long MA broken (risk-off)</b>: price closes below the long MA minus the envelope buffer for N confirmed days → rotate the whole leveraged leg back into the base leg; drawdown add-on tiers are ignored meanwhile, avoiding the churn of buying today and being forced out tomorrow.",
+  "hyb.step4": "④ <b>Deep-dip handover</b>: if the base leg is down by at least the handover threshold (35% by default) and still below the long MA → the trend filter is suspended, fired tiers are cleared, and the add-on ladder takes over again to rebuild leverage tier by tier (this is where the excess return comes from).",
+  "hyb.step5": "⑤ <b>Hand back to the trend filter</b>: once price reclaims the long MA, deep-dip mode ends, the MA state and the remembered weight are reset, and we return to ①. Set the threshold to 0 to disable the hybrid and fall back to a pure trend filter.",
+  "hyb.rule": "What the data shows (SMH/SOXL): the longer you hold, the more the protection costs — over the full history it ends around 0.40x the dynamic strategy. But entering near a peak and holding about five years, the protection actually wins (roughly 1.35x from early 2021), and the worst drawdown is lower from every start date (about -63% vs -80%). So it suits you if deep drawdowns scare you, or if you happen to start at a high.",
+  "hyb.state.param": "Parameters: long MA {L}d / short MA {S}d / envelope {buf}% / confirm {cfm}d / trim below short MA {cut}% / deep-dip handover {deep}%.",
+  "hyb.state.deep": "Deep-dip mode was entered {n} time(s) over this window, {d} trading days in total.",
+  "hyb.cmp.dyn": "Dynamic strategy (current params)",
+  "hyb.cmp.hyb": "Hybrid protected strategy",
+  "hyb.trades.h": "Hybrid strategy trade log (over the date range above)",
+  "hyb.none": "The hybrid strategy triggered no rebalancing in this window.",
+  "hyb.fail": "Failed to compute the hybrid strategy — please check the parameters or the date range.",
 });
 
 // ---------- 高级模式 / 推荐区间 ----------

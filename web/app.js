@@ -1178,6 +1178,7 @@
     renderMetrics(res);
     renderChart(res, src);
     renderTrades(res, src);
+    renderHybridDetail(res, src);
     renderCompare(capA, capB);
     // 页面最底端的进场建议：用同一套补仓/减仓参数，只搜索初始配比
     renderEntryAdvice(src, dd, rb, capA + capB, monthlyPct);
@@ -1235,25 +1236,30 @@
   // ---- 净值曲线 ----
   function activeCurves() {
     const on = {};
-    document.querySelectorAll("#curveToggle span").forEach((s) => on[s.dataset.k] = s.classList.contains("on"));
+    // pro-only 曲线（混合保护、均线轮动）在非高级模式下即使带 .on 也不参与计算与绘制
+    document.querySelectorAll("#curveToggle span").forEach((s) => {
+      const vis = !s.classList.contains("pro-only") || proOn();
+      on[s.dataset.k] = vis && s.classList.contains("on");
+    });
     return on;
   }
 
-  // 「混合保护策略」对照曲线：在当前全部参数不变的前提下，额外跑一次「趋势过滤 + 深跌交还」
-  // 的回测，把它的净值画到同一张图上，便于看保护策略在长时间线上的变化规律。
-  // 只在勾选该曲线时才计算，并缓存到 res 上（undefined=未算过，null=算不出）。
+  // 「混合保护策略」对照曲线/详情：在当前全部参数不变的前提下，额外跑一次「趋势过滤 + 深跌交还」
+  // 的回测，把它的净值画到同一张图上，并在高级模式的详情卡里展示机制与逐笔成交。
+  // 只在需要时才计算，完整结果缓存到 res 上（undefined=未算过，null=算不出）。
   function ensureHybrid() {
     if (!lastResult || !lastResult.baseOpts) return;
     const res = lastResult.res;
     if (res.equityHybrid !== undefined) return;
     res.equityHybrid = null;
+    res.hybridRes = null;
     try {
       const r = BT.runBacktest(Object.assign({}, lastResult.baseOpts, hybridOpts()));
       if (r.equityStrategy && r.equityStrategy.length === res.equityDates.length) {
         res.equityHybrid = r.equityStrategy;
-        res.hybridMetrics = r.metrics || null;
+        res.hybridRes = r;
       }
-    } catch (e) { res.equityHybrid = null; }
+    } catch (e) { res.equityHybrid = null; res.hybridRes = null; }
   }
 
   function renderChart(res, src) {
@@ -1402,17 +1408,11 @@
   }
 
   // ---- 逐笔交易表 ----
-  function renderTrades(res, src) {
-    // 表头的价格列名随数据源变化（如 SMH 成交价 / SOXL 成交价）
-    $("thPriceA").textContent = T("trade.th.priceDyn", { k: src.na });
-    $("thPriceB").textContent = T("trade.th.priceDyn", { k: src.nb });
-    // 持仓市值列同样随数据源变化（如 SMH 持仓市值 / SOXL 持仓市值）
-    $("thValA").textContent = T("trade.th.valueDyn", { k: src.na });
-    $("thValB").textContent = T("trade.th.valueDyn", { k: src.nb });
-    // 计算每笔成交后总资金：用 tradeMarks 的 equity（与 trades 一一对应）
-    // trades 元素为 [日期, 类型, 说明, 基准端成交价, 杠杆端成交价, 基准端成交后市值, 杠杆端成交后市值]，
-    // 价格即成交当日两标的收盘价（本模型按收盘价换仓），市值＝成交后持股数×当日收盘价。
-    const rows = res.trades.map((t, i) => {
+  // trades 元素为 [日期, 类型, 说明, 基准端成交价, 杠杆端成交价, 基准端成交后市值, 杠杆端成交后市值]，
+  // 价格即成交当日两标的收盘价（本模型按收盘价换仓），市值＝成交后持股数×当日收盘价。
+  // 成交后总资金取 tradeMarks 的 equity（与 trades 一一对应）。
+  function tradeRowsHTML(res) {
+    return res.trades.map((t, i) => {
       const eq = res.tradeMarks[i] ? fmtMoney(res.tradeMarks[i].equity) : "-";
       const cls = t[1] === "add" ? "buy" : "sell";
       const pa = t[3] != null ? fmtPrice(t[3]) : "-";
@@ -1423,8 +1423,79 @@
       const desc = t[2] && t[2].k ? T(t[2].k, t[2].v) : (t[2] || "");
       return `<tr><td>${t[0]}</td><td class="${cls}">${kind}</td><td>${desc}</td><td>${pa}</td><td>${pb}</td><td>${va}</td><td>${vb}</td><td>${eq}</td></tr>`;
     });
+  }
+
+  // 表头的价格/市值列名随数据源变化（如 SMH 成交价 / SOXL 持仓市值）
+  function setTradeHead(ids, src) {
+    if (!$(ids[0])) return;
+    $(ids[0]).textContent = T("trade.th.priceDyn", { k: src.na });
+    $(ids[1]).textContent = T("trade.th.priceDyn", { k: src.nb });
+    $(ids[2]).textContent = T("trade.th.valueDyn", { k: src.na });
+    $(ids[3]).textContent = T("trade.th.valueDyn", { k: src.nb });
+  }
+
+  function renderTrades(res, src) {
+    setTradeHead(["thPriceA", "thPriceB", "thValA", "thValB"], src);
+    const rows = tradeRowsHTML(res);
     $("tradeBody").innerHTML = rows.join("") || `<tr><td colspan="8">${T("trade.none")}</td></tr>`;
     $("tradeCount").textContent = T("trade.count", { n: res.trades.length });
+  }
+
+  // ---- 混合保护策略详情（高级模式专属）----
+  // 用同一套资金/档位/日期区间，额外跑一遍「趋势过滤 + 深跌交还」，展示：
+  // 运行状态（趋势参数、深跌模式进出次数与天数）、与动态策略的指标对照、以及逐笔成交。
+  function metricsOf(res, equity) {
+    const hasFlow = !!(res.flows && res.totalInvested && res.monthlyCash > 0);
+    return hasFlow
+      ? BT.calcFlowMetrics(res.equityDates, equity, res.flows)
+      : BT.calcMetrics(res.equityDates, equity);
+  }
+
+  function renderHybridDetail(res, src) {
+    if (!$("hybridCard")) return;
+    if (!proOn()) {           // 非高级模式：不计算也不留旧内容
+      $("hybridTradeBody").innerHTML = "";
+      $("hybridCmpBody").innerHTML = "";
+      $("hybridState").textContent = "";
+      $("hybridSub").textContent = "";
+      $("hybridCount").textContent = "";
+      return;
+    }
+    ensureHybrid();
+    const h = res.hybridRes;
+    $("hybridSub").textContent = T("hyb.sub", { s: res.startDate, e: res.endDate });
+    if (!h) {
+      $("hybridState").textContent = T("hyb.fail");
+      $("hybridCmpBody").innerHTML = "";
+      $("hybridTradeBody").innerHTML = "";
+      $("hybridCount").textContent = "";
+      return;
+    }
+    const p = hybridOpts();
+    $("hybridState").textContent =
+      T("hyb.state.param", {
+        L: p.trendLong, S: p.trendShort, buf: p.trendBuf,
+        cfm: p.trendConfirm, cut: p.trendShortCut, deep: p.trendDeepDD,
+      }) + " " +
+      T("hyb.state.deep", { n: h.trendDeepEnters || 0, d: h.trendDeepDays || 0 });
+
+    const rows = [
+      { name: T("hyb.cmp.dyn"), m: metricsOf(res, res.equityStrategy), n: res.trades.length },
+      { name: T("hyb.cmp.hyb"), m: metricsOf(res, res.equityHybrid), n: h.trades.length },
+    ];
+    $("hybridCmpBody").innerHTML = rows.map((r) => {
+      if (!r.m) return "";
+      const cagr = r.m.cagr != null ? r.m.cagr : r.m.twrCagr;
+      return `<tr><td>${r.name}</td><td>${fmtMoney(r.m.finalTotal)}</td>
+              <td class="${cagr >= 0 ? "pos" : "neg"}">${fmtPct(cagr)}</td>
+              <td class="neg">${fmtPct(r.m.maxDD)}</td>
+              <td>${r.m.sharpe.toFixed(2)}</td><td>${r.n}</td></tr>`;
+    }).join("");
+
+    setTradeHead(["hThPriceA", "hThPriceB", "hThValA", "hThValB"], src);
+    const trows = tradeRowsHTML(h);
+    $("hybridTradeBody").innerHTML = trows.join("") || `<tr><td colspan="8">${T("hyb.none")}</td></tr>`;
+    $("hybridCount").textContent = T("trade.count", { n: h.trades.length });
   }
 
   // ---- 组合横向对比（可勾选，各组共用动态统一起点） ----
