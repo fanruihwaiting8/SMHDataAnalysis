@@ -257,7 +257,7 @@
       <!-- 已解锁 -->
       <div id="proUnlockView" style="display:none">
         <div class="pp-sub" data-i18n="pro.on">✅ 高级模式已开启。</div>
-        <div class="pro-sec">
+        <div class="pro-sec" id="proChgSec" style="display:none">
           <div style="font-size:13px;font-weight:700" data-i18n="pro.chg">修改密码</div>
           <label data-i18n="pro.old">当前密码</label>
           <input id="proOld" type="password" autocomplete="current-password" />
@@ -271,6 +271,7 @@
           </div>
         </div>
         <div class="pp-btns">
+          <button class="ghost" id="proChgBtn" data-i18n="pro.chg">修改密码</button>
           <button class="ghost" id="proExit" data-i18n="pro.exit">退出高级模式</button>
           <button class="ghost" id="proClose2" data-i18n="pro.close">关闭</button>
         </div>
@@ -605,7 +606,7 @@ document.write('<script src="data.js?v=9&t=' + SMH_CACHE_T + '"><\/script>');
 // 前端脚本同样附加 token：Safari 等浏览器对 index.html 自身的缓存很顽固，
 // 只靠手动 bump ?v= 时，拿到旧 index.html 的用户仍会继续加载旧 JS。
 (function () {
-  var files = ['i18n.js?v=25', 'backtest.js?v=21', 'app.js?v=40'];
+  var files = ['i18n.js?v=25', 'backtest.js?v=21', 'app.js?v=41'];
   for (var i = 0; i < files.length; i++) {
     document.write('<script src="' + files[i] + '&t=' + SMH_CACHE_T + '"><\/script>');
   }

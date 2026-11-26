@@ -1753,10 +1753,19 @@
     if (un) un.style.display = _proOn ? "" : "none";
   }
 
+  // 改密码表单默认收起，只有点「修改密码」才展开，避免解锁后迎面就是一张改密码表
+  function proChgShow(show) {
+    const sec = $("proChgSec"), btn = $("proChgBtn");
+    if (sec) sec.style.display = show ? "" : "none";
+    if (btn) btn.style.display = show ? "none" : "";
+    if (show && $("proOld")) $("proOld").focus();
+  }
+
   function proOpen() {
     proMsg("");
     ["proPw", "proOld", "proNew", "proNew2"].forEach((id) => { if ($(id)) $(id).value = ""; });
     applyProUI();
+    proChgShow(false);
     if ($("proMask")) $("proMask").classList.add("show");
     if (!_proOn && $("proPw")) $("proPw").focus();
   }
@@ -1777,12 +1786,15 @@
     lsSet(PRO_LS_ON, "1");
     proRefresh();
     proMsg("pro.ok.unlock", "ok");
+    // 解锁即收工：扫一眼提示就关掉，状态在右上角按钮上看得见
+    setTimeout(proCloseMask, 700);
   }
   function proExit() {
     _proOn = false;
     lsDel(PRO_LS_ON);
     proRefresh();
     proMsg("pro.exited", "ok");
+    setTimeout(proCloseMask, 700);
   }
   function proSavePw() {
     const o = ($("proOld") && $("proOld").value) || "";
@@ -1793,6 +1805,7 @@
     if (n !== n2) { proMsg("pro.err.mismatch", "err"); return; }
     lsSet(PRO_LS_PW, hashPw(n));
     ["proOld", "proNew", "proNew2"].forEach((id) => { if ($(id)) $(id).value = ""; });
+    proChgShow(false);
     proMsg("pro.ok.saved", "ok");
   }
   function proResetPw() {
@@ -1808,6 +1821,7 @@
     on("proClose1", proCloseMask);
     on("proClose2", proCloseMask);
     on("proSave", proSavePw);
+    on("proChgBtn", () => { proMsg(""); proChgShow(true); });
     on("proReset", proResetPw);
     on("proExit", proExit);
     if ($("proMask")) {
