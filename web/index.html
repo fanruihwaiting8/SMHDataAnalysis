@@ -81,6 +81,8 @@
   .langbar span.on { background: var(--primary); color: #fff; border-color: var(--primary); }
   /* 高级模式：右上角开关 + 密码浮层 */
   .langbar span#proBtn.on { background: #8957e5; border-color: #8957e5; }
+  .langbar span#proQuit { color: #f0883e; border-color: rgba(240,136,62,.5); }
+  .langbar span#proQuit:hover { background: rgba(240,136,62,.14); }
   .pro-mask {
     position: fixed; inset: 0; background: rgba(1,4,9,.72);
     display: none; align-items: center; justify-content: center; z-index: 99;
@@ -237,6 +239,8 @@
       <span data-lang-btn="zh" data-i18n="lang.zh">中文</span>
       <span data-lang-btn="en" data-i18n="lang.en">English</span>
       <span id="proBtn" data-i18n="pro.btn" data-i18n-title="pro.btn.title" title="高级模式：需要密码，解锁后可使用实验性数据源组合">🔒 高级模式</span>
+      <!-- 仅高级模式下出现：一键退出，不用再开浮层 -->
+      <span id="proQuit" class="pro-only" data-i18n="pro.quit" data-i18n-title="pro.quit.title" title="一键退出高级模式（不用再开浮层）">✕ 退出高级</span>
     </div>
   </div>
 
@@ -606,7 +610,7 @@ document.write('<script src="data.js?v=9&t=' + SMH_CACHE_T + '"><\/script>');
 // 前端脚本同样附加 token：Safari 等浏览器对 index.html 自身的缓存很顽固，
 // 只靠手动 bump ?v= 时，拿到旧 index.html 的用户仍会继续加载旧 JS。
 (function () {
-  var files = ['i18n.js?v=25', 'backtest.js?v=21', 'app.js?v=41'];
+  var files = ['i18n.js?v=26', 'backtest.js?v=21', 'app.js?v=42'];
   for (var i = 0; i < files.length; i++) {
     document.write('<script src="' + files[i] + '&t=' + SMH_CACHE_T + '"><\/script>');
   }

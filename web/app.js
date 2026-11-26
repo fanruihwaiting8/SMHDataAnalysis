@@ -1824,6 +1824,8 @@
     on("proChgBtn", () => { proMsg(""); proChgShow(true); });
     on("proReset", proResetPw);
     on("proExit", proExit);
+    // 右上角的一键退出：不开浮层也能退，退完顺手把浮层状态复位
+    on("proQuit", () => { proExit(); proCloseMask(); });
     if ($("proMask")) {
       // 点浮层外的遮罩关闭
       $("proMask").addEventListener("click", (e) => { if (e.target === $("proMask")) proCloseMask(); });
