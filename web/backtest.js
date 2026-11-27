@@ -105,6 +105,9 @@ function runBacktest(opts) {
     trendBlockAdd = true,
     trendDeepDD = 0,
     trendReenter = true,
+    // 保护退场年限（0=不退场）：进场满 N 年后关闭趋势过滤，持仓原样交给
+    // 回撤补仓/反弹减仓的动态策略继续跑（「前几年要保护、长期要复利」的折中）。
+    trendOffYears = 0,
   } = opts;
 
 const smhSeries = seriesMap(keyA);
@@ -176,6 +179,12 @@ const smhSeries = seriesMap(keyA);
   let trWeightBefore = null;
   // 是否处于深跌交接模式（此期间趋势过滤不干预，补仓阶梯接管）
   let trDeep = false;
+  // 保护退场：进场满 trOffY 年后的第一个交易日起停用趋势过滤
+  const trOffY = Math.max(0, Number(trendOffYears) || 0);
+  const trOffDate = (trOn && trOffY > 0)
+    ? (Number(start.slice(0, 4)) + Math.floor(trOffY)) + start.slice(4)
+    : null;
+  let trSwitched = false;
   let deepEnters = 0, deepDays = 0;
   // 纯「长均线轮动」对照组用独立状态机，不受深跌交接影响
   let rotStage = 0, rotBelow = 0;
@@ -316,6 +325,8 @@ const smhSeries = seriesMap(keyA);
     // 放在回撤补仓之前：风控中（stage=2）时当日的补仓档位直接被拦截，
     // 避免「先补进去、再被清掉」的来回摩擦。
     let trendNoAdd = false;
+    // 保护退场日之后趋势过滤停用（纯均线轮动对照线仍继续走完整段）
+    const trActive = trOn && (trOffDate === null || date < trOffDate);
     if (trOn) {
       const mL = maL[date], mS = maS[date];
 
@@ -330,6 +341,12 @@ const smhSeries = seriesMap(keyA);
         rotAShares = (rv * (1 - tb)) / pa;
       }
       equityTrendRotate.push(rotAShares * pa + rotBShares * pb);
+
+      if (!trActive) {
+        // 保护退场：切换当日只复位一次趋势状态，持仓与回撤档位记录原样保留，
+        // 之后完全交给动态策略（回撤补仓 / 反弹减仓）。
+        if (!trSwitched) { trSwitched = true; trDeep = false; trStage = 0; trBelow = 0; trWeightBefore = null; }
+      } else {
 
       // --- 深跌交接：回撤足够深且仍在长均线下方时，趋势过滤让位给「深跌加杠杆」的
       // 补仓阶梯；直到价格重新站回长均线才交还给趋势过滤。两个条件互斥（跌破/站上
@@ -401,6 +418,7 @@ const smhSeries = seriesMap(keyA);
       }
 
       trendNoAdd = trBlock && trStage === 2;
+      }
       }
     }
 
