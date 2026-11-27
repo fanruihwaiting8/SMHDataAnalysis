@@ -851,6 +851,129 @@
     return stale ? addBlk + cutBlk : cutBlk + addBlk;
   }
 
+  // ---- 价格行动路线图（高级模式专属）----
+  // 把「向上减仓档 / 向下补仓档 / 创新高 / 新底部确认线」全部折算成 SMH 的绝对价位，
+  // 合并到同一条价格轴上，按价格从高到低排成一张表：到了哪个价，就做哪一笔，做完两端各剩多少。
+  // 口径：上行各行是「从现在起一路涨上去」的累进，下行各行是「从现在起一路跌下去」的累进，
+  // 两个方向各自独立推演，不能跨方向连着读（真实行情来回走时以实际触发为准）。
+  function roadmapRows(src, st, dd, rb, capA, capB) {
+    const rows = [];
+    // 上行：未触发的减仓档。只有本轮底部有效（非 troughStale）时才有确定价位。
+    if (!st.troughStale) {
+      const fired = new Set(st.rbFired);
+      let base = capA, lev = capB;
+      RB.filter((lv) => (rb[lv] || 0) > 0 && !fired.has(lv)).forEach((lv) => {
+        const amt = lev * rb[lv] / 100;
+        lev -= amt; base += amt;
+        rows.push({
+          price: st.rbTriggerPrices[lv], kind: "cut",
+          cond: T("adv.map.cond.cut", { lv: lv, trough: fmtPrice(st.activeTrough) }),
+          act: T("adv.map.act.cut", { amt: fmtMoney(amt), nb: src.nb, na: src.na, p: rb[lv] }),
+          a: base, b: lev,
+        });
+      });
+    }
+    // 里程碑：创新高 —— 补仓档全部清零，下一轮从 -5% 重新计
+    if (st.latestPrice < st.peak) {
+      rows.push({
+        price: st.peak, kind: "mile",
+        cond: T("adv.map.cond.peak", { pd: st.peakDate }),
+        act: T("adv.map.act.peak", { na: src.na }), a: null, b: null,
+      });
+    }
+    // 下行：未触发的补仓档
+    const ddFired = new Set(st.ddFired);
+    let base2 = capA, lev2 = capB;
+    DD.filter((lv) => (dd[lv] || 0) > 0 && !ddFired.has(lv)).forEach((lv) => {
+      const amt = base2 * dd[lv] / 100;
+      base2 -= amt; lev2 += amt;
+      rows.push({
+        price: st.ddTriggerPrices[lv], kind: "add",
+        cond: T("adv.map.cond.add", { lv: lv, peak: fmtPrice(st.peak) }),
+        act: T("adv.map.act.add", { amt: fmtMoney(amt), nb: src.nb, na: src.na, p: dd[lv] }),
+        a: base2, b: lev2,
+      });
+    });
+    // 里程碑：新底部确认线（底部属上一轮时，跌破它减仓才重新计时）
+    if (st.troughStale) {
+      const need = st.peak * (1 - BT.TROUGH_TRIGGER_PCT / 100);
+      // -25% 补仓档与确认线同价时不单列一行，直接把说明挂到那一行上，避免重复
+      const same = rows.find((r) => r.kind === "add" && Math.abs(r.price - need) < need * 1e-6);
+      if (same) {
+        same.act += "<br/><span class=\"note\">" + T("adv.map.act.bottom") + "</span>";
+      } else {
+        rows.push({
+          price: need, kind: "mile",
+          cond: T("adv.map.cond.bottom", { trig: BT.TROUGH_TRIGGER_PCT.toFixed(0) }),
+          act: T("adv.map.act.bottom"), a: null, b: null,
+        });
+      }
+    }
+    rows.sort((x, y) => y.price - x.price);
+    return rows;
+  }
+
+  // 见底反弹卖点推演：真正的减仓价要等新底部落下来才知道，
+  // 这里把「万一在某个价位见底」逐个假设一遍，直接给出对应的减仓价位。
+  function roadmapBottomTable(src, st, dd, rb) {
+    const lvs = RB.filter((lv) => (rb[lv] || 0) > 0);
+    if (!lvs.length) return "";
+    const need = st.peak * (1 - BT.TROUGH_TRIGGER_PCT / 100);
+    const ddFired = new Set(st.ddFired);
+    const cands = [{ p: st.latestPrice, tag: T("adv.map.bt.now") }];
+    DD.filter((lv) => (dd[lv] || 0) > 0 && !ddFired.has(lv)).forEach((lv) => {
+      cands.push({ p: st.ddTriggerPrices[lv], tag: T("adv.map.bt.lv", { lv: lv }) });
+    });
+    let h = `<div class="adv-sec">${T("adv.map.bt.sec", { na: src.na, nb: src.nb })}</div>`
+      + `<div class="note" style="margin-bottom:8px">`
+      + T("adv.map.bt.note", { trig: BT.TROUGH_TRIGGER_PCT.toFixed(0), need: fmtPrice(need), na: src.na })
+      + "</div>"
+      + '<div class="tbl-wrap"><table class="cmp-tbl"><thead><tr>'
+      + `<th>${T("adv.map.bt.th.bottom")}</th>`
+      + lvs.map((lv) => `<th>+${lv}%</th>`).join("")
+      + "</tr></thead><tbody>";
+    cands.forEach((c) => {
+      const ok = c.p <= need + 1e-9;   // 该价位本身是否已满足「自峰值回撤≥25%」
+      h += `<tr${ok ? "" : ' style="opacity:.55"'}><td><b>${fmtPrice(c.p)}</b> `
+        + `<span class="note">${c.tag}${ok ? "" : T("adv.map.bt.invalid")}</span></td>`
+        + lvs.map((lv) => `<td>${fmtPrice(c.p * (1 + lv / 100))}</td>`).join("")
+        + "</tr>";
+    });
+    return h + "</tbody></table></div>";
+  }
+
+  function renderPriceRoadmap(src, st, dd, rb, capA, capB) {
+    const rows = roadmapRows(src, st, dd, rb, capA, capB);
+    let h = `<div class="adv-sec">${T("adv.map.sec", { na: src.na })}</div>`
+      + `<div class="note" style="margin-bottom:8px">`
+      + T("adv.map.note", { na: src.na, px: fmtPrice(st.latestPrice), d: st.latestDate })
+      + "</div>"
+      + '<div class="tbl-wrap"><table class="cmp-tbl"><thead><tr>'
+      + `<th>${T("adv.map.th.price", { na: src.na })}</th><th>${T("adv.map.th.gap")}</th>`
+      + `<th>${T("adv.map.th.cond")}</th><th>${T("adv.map.th.act")}</th>`
+      + `<th>${T("adv.map.th.after", { na: src.na, nb: src.nb })}</th>`
+      + "</tr></thead><tbody>";
+    let nowDone = false;
+    const nowRow = `<tr style="background:rgba(96,165,250,.14);font-weight:700">`
+      + `<td>${fmtPrice(st.latestPrice)}</td><td>${T("adv.map.nowGap")}</td>`
+      + `<td>${T("adv.map.nowCond", { d: st.latestDate, phase: st.phaseLabel })}</td>`
+      + `<td>${T("adv.map.nowAct")}</td>`
+      + `<td>${fmtMoney(capA)} / ${fmtMoney(capB)}</td></tr>`;
+    rows.forEach((r) => {
+      if (!nowDone && r.price < st.latestPrice) { h += nowRow; nowDone = true; }
+      const gap = ((r.price - st.latestPrice) / st.latestPrice) * 100;
+      const after = (r.a === null) ? "—" : `${fmtMoney(r.a)} / ${fmtMoney(r.b)}`;
+      h += `<tr${r.kind === "mile" ? ' style="opacity:.75"' : ""}>`
+        + `<td><b>${fmtPrice(r.price)}</b></td>`
+        + `<td>${(gap >= 0 ? "+" : "") + gap.toFixed(1)}%</td>`
+        + `<td>${r.cond}</td><td>${r.act}</td><td>${after}</td></tr>`;
+    });
+    if (!nowDone) h += nowRow;
+    h += "</tbody></table></div>";
+    h += `<div class="note" style="margin-top:6px">${T("adv.map.tail", { na: src.na })}</div>`;
+    return h + roadmapBottomTable(src, st, dd, rb);
+  }
+
   // 单个方案框：初始买法 + 该配比在样本上的表现
   function advicePlanBox(title, tag, r, src, total, best) {
     const capB = total * r.w / 100, capA = total - capB;
@@ -1196,6 +1319,7 @@
         + "</div>";
       html += renderAdviceSimilar(src, similarAnalysis(src.a, SIM_WIN, SIM_TOP));
       html += renderAdviceActions(src, st, dd, rb, total, 0);
+      if (proOn()) html += renderPriceRoadmap(src, st, dd, rb, total, 0);
       body.innerHTML = html;
       return;
     }
@@ -1235,7 +1359,10 @@
         src, horizonAdvice(src, st, tl, dd, rb, total, monthlyPct, cap), cap);
     }
     const recW = recommended.w;
-    html += renderAdviceActions(src, st, dd, rb, total * (100 - recW) / 100, total * recW / 100);
+    const recA = total * (100 - recW) / 100, recB = total * recW / 100;
+    html += renderAdviceActions(src, st, dd, rb, recA, recB);
+    // 高级模式：再把上下两个方向合成一条 SMH 价格轴的行动路线图
+    if (proOn()) html += renderPriceRoadmap(src, st, dd, rb, recA, recB);
     body.innerHTML = html;
   }
 
